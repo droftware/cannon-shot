@@ -38,7 +38,8 @@ GLuint programID;
 
 class Circle{
 public:
-  Circle(GLMatrices *mtx, int cx=0, int cy=0, int radius=3, int numPolygons =100, float color=0.5);
+  Circle(GLMatrices *mtx, float* color, int cx=0, int cy=0, int radius=3, int numPolygons =100);
+  Circle(const Circle& cr);
   ~Circle();
   void setCenter(int x, int y);
   void setRadius(int r);
@@ -47,7 +48,7 @@ public:
   int getCenterY();
   int getRadius();
   VAO* getVAO();
-  void draw();
+  virtual void draw();
 private:
   GLfloat *vertex_buffer_data;
   GLfloat *color_buffer_data;
@@ -61,7 +62,8 @@ private:
 
 class Rectangle{
 public:
-  Rectangle(GLMatrices *mtx, int x = 0, int y = 0, int width = 2, int height = 3, int angle = 0, int color = 0);
+  Rectangle(GLMatrices *mtx, float* color,int x = 0, int y = 0, int width = 2, int height = 3, int angle = 0);
+  Rectangle(const Rectangle& rect);
   ~Rectangle();
   VAO* getVAO();
   int getTopLeftX();
@@ -76,7 +78,7 @@ public:
   void setHeight(int h);
   void setAngle(float angle);
   void setAxis(glm::vec3 &axis);
-  void draw();
+  virtual void draw();
 private:
   GLfloat *vertex_buffer_data;
   GLfloat *color_buffer_data;
@@ -90,26 +92,41 @@ private:
   glm::vec3 axis;
 };
 
-class Barrel{
+class Bomb:public class Circle{
 public:
-  Barrel(Circle* c, int width=1.5, int height=4);
-  VAO* getVAO();
-  void tiltTop();
-  void tiltBottom();
+  Bomb(GLMatrices *mtx, float* color, int cx=0, int cy=0, int radius=3, int numPolygons =100);
+  void applyForces(float timeIncrement);
+private: 
+  float speedX; //initial speeds x componenet
+  float speedY; //initial speeds y component
+  float lastSpeedX;
+  float lastSpeedY;
+  float time;
+  static const float gravity = 9.8f;
+  static const float airResistX = 0.2f; // air resistance force x component
+  static const float airResistY = 0.2f; // air resistance force y component
+};
+
+class Cannon{
+public:
+  Cannon(GLMatrices *mtx, int x = -22, int y = -10);
+  ~Cannon();
+  int getNumBombs();
+  void barrelUp();
+  void barrelDown();
+  void shoot();
+  void draw();
+  void applyForces();
 private:
-  GLfloat *vertex_buffer_data;
-  GLfloat *color_buffer_data;
-  int width;
-  int height;
-  int axis_x;
-  int axis_y;
-  int axis_z;
-
-
+  Circle *tank;
+  Rectangle *barrel;
+  GLMatrices *mtx;
+  std::vector<Bomb> bombList;
 };
 
 Circle *c;
 Rectangle *r;
+Cannon *can;
 
 /* Function to load Shaders - Use it as it is */
 GLuint LoadShaders(const char * vertex_file_path,const char * fragment_file_path) {
@@ -281,7 +298,7 @@ void draw3DObject (struct VAO* vao)
  * Customizable functions *
  **************************/
 
-Circle::Circle(GLMatrices *mtx,int cx, int cy, int radius, int numPolygons, float color)
+Circle::Circle(GLMatrices *mtx, float* color, int cx, int cy, int radius, int numPolygons)
 {
   vertex_buffer_data = new GLfloat[500 * 9];
   color_buffer_data = new GLfloat[500 * 9];
@@ -315,12 +332,30 @@ Circle::Circle(GLMatrices *mtx,int cx, int cy, int radius, int numPolygons, floa
     vertex_buffer_data[9*i + 8] =  0;
 
     //Adding color
-    for(int j=0;j<9;j++){
-      color_buffer_data[9*i + j] = color;
+    for(int j=0;j<9;j+=3){
+      color_buffer_data[9*i + j + 0] = color[0];
+      color_buffer_data[9*i + j + 1] = color[1];
+      color_buffer_data[9*i + j + 2] = color[2];
     }
   }
   vaobj = create3DObject(GL_TRIANGLES, 3*numPolygons + 3, vertex_buffer_data, color_buffer_data, GL_FILL);
 
+}
+
+//copy constructor
+Circle::Circle(const Circle& circ){
+  vertex_buffer_data = new GLfloat[500 * 9];
+  color_buffer_data = new GLfloat[500 * 9];
+  this->cx = circ.cx;
+  this->cy = circ.cy;
+  this->radius = circ.radius;
+  this->numPolygons = circ.numPolygons;
+  this->mtx = circ.mtx;
+  for(int i = 0; i <= 9*numPolygons; i++){
+      vertex_buffer_data[i] = circ.vertex_buffer_data[i];
+      color_buffer_data[i] = circ.color_buffer_data[i];
+  }
+  vaobj = create3DObject(GL_TRIANGLES, 3*numPolygons + 3, vertex_buffer_data, color_buffer_data, GL_FILL);
 }
 
 void Circle::setCenter(int x, int y){
@@ -377,7 +412,7 @@ Circle::~Circle(){
   delete[] color_buffer_data;
 }
 
-Rectangle::Rectangle(GLMatrices *mtx, int x, int y, int width, int height, int angle, int color)
+Rectangle::Rectangle(GLMatrices *mtx, float* color,int x, int y, int width, int height, int angle)
 {
   vertex_buffer_data = new GLfloat[20];
   color_buffer_data = new GLfloat[20];
@@ -390,36 +425,53 @@ Rectangle::Rectangle(GLMatrices *mtx, int x, int y, int width, int height, int a
   this->axis = glm::vec3(0.0f,0.0f,1.0f);
 
   //First triangle
-  vertex_buffer_data[0] = width;
-  vertex_buffer_data[1] = 0;
+  vertex_buffer_data[0] = width/2;
+  vertex_buffer_data[1] = height/2;
   vertex_buffer_data[2] = 0;
 
-  vertex_buffer_data[3] = width;
-  vertex_buffer_data[4] = -1*height;
+  vertex_buffer_data[3] = width/2;
+  vertex_buffer_data[4] = -1*height/2;
   vertex_buffer_data[5] = 0;
 
-  vertex_buffer_data[6] = 0;
-  vertex_buffer_data[7] = -1*height;
+  vertex_buffer_data[6] = -1*width/2;
+  vertex_buffer_data[7] = -1*height/2;
   vertex_buffer_data[8] = 0;
 
   //Second Triangle
-  vertex_buffer_data[9] = width;
-  vertex_buffer_data[10] = 0;
+  vertex_buffer_data[9] = width/2;
+  vertex_buffer_data[10] = height/2;
   vertex_buffer_data[11] = 0;
 
-  vertex_buffer_data[12] = 0;
-  vertex_buffer_data[13] = 0;
+  vertex_buffer_data[12] = -1*width/2;
+  vertex_buffer_data[13] = height/2;
   vertex_buffer_data[14] = 0;
 
-  vertex_buffer_data[15] = 0;
-  vertex_buffer_data[16] = -1*height;
+  vertex_buffer_data[15] = -1*width/2;
+  vertex_buffer_data[16] = -1*height/2;
   vertex_buffer_data[17] = 0;
 
   //Coloring
   for(int j=0;j<18;j+=3){
-    color_buffer_data[j + 0] = 1;
-    color_buffer_data[j + 1] = 0;
-    color_buffer_data[j + 2] = 0;
+    color_buffer_data[j + 0] = color[0];
+    color_buffer_data[j + 1] = color[1];
+    color_buffer_data[j + 2] = color[2];
+  }
+  vaobj = create3DObject(GL_TRIANGLES, 6, vertex_buffer_data, color_buffer_data, GL_FILL);
+}
+
+Rectangle::Rectangle(const Rectangle& rect){
+  vertex_buffer_data = new GLfloat[20];
+  color_buffer_data = new GLfloat[20];
+  this->mtx = rect.mtx;
+  this->x = rect.x;
+  this->y = rect.y;
+  this->width = rect.width;
+  this->height = rect.height;
+  this->angle = rect.angle;
+  this->axis = rect.axis;
+  for(int i = 0; i<18; i++){
+    vertex_buffer_data[i] = rect.vertex_buffer_data[i];
+    color_buffer_data[i] = rect.vertex_buffer_data[i];
   }
   vaobj = create3DObject(GL_TRIANGLES, 6, vertex_buffer_data, color_buffer_data, GL_FILL);
 }
@@ -482,9 +534,8 @@ void Rectangle::draw(){
   mtx->model = glm::mat4(1.0f);
 
   /* Render your scene */
-
-  glm::mat4 mtranslate = glm::translate (glm::vec3((float)x, (float)y, 0.0f)); // glTranslatef
   glm::mat4 mrotate = glm::rotate((float)(angle*M_PI/180.0f), axis);  // rotate about vector axis
+  glm::mat4 mtranslate = glm::translate (glm::vec3((float)x, (float)y, 0.0f)); // glTranslatef
   glm::mat4 mtransform = mtranslate * mrotate;
   mtx->model *= mtransform;
   MVP =  mtx->projection * mtx->view * mtx->model; // MVP = p * V * M
@@ -500,6 +551,109 @@ Rectangle::~Rectangle(){
   delete[] color_buffer_data;
 }
 
+Cannon::Cannon(GLMatrices *mtx, int x, int y){
+  //Circle(GLMatrices *mtx, int cx=0, int cy=0, int radius=3, 
+  //int numPolygons =100, float color=0.5);
+  //Rectangle(GLMatrices *mtx, int x, int y, 
+  //int width, int height, int angle, int color)
+  float *colorTank = new float[3];
+  colorTank[0] = 0;
+  colorTank[1] = 1;
+  colorTank[2] = 0;
+  tank = new Circle(mtx,colorTank,x,y,2,100);
+
+  float *colorBarrel = new float[3];
+  colorBarrel[0] = 0;
+  colorBarrel[1] = 0;
+  colorBarrel[2] = 1;
+  barrel = new Rectangle(mtx,colorBarrel,x, y, 2, 8, -70);
+  glm::vec3 mtemp = glm::vec3(0, 0, 1);
+  barrel->setAxis(mtemp);
+
+  bombList.reserve(10);
+
+  delete colorTank;
+  delete colorBarrel;
+}
+
+Cannon::~Cannon(){
+  delete tank;
+  delete barrel;
+}
+
+void Cannon::draw(){
+  
+  barrel->draw();
+  tank->draw();
+  for(int i = 0; i < getNumBombs(); i++){
+    bombList[i].draw();
+  }
+}
+
+int Cannon::getNumBombs(){
+  return bombList.size();
+}
+
+void Cannon::barrelUp(){
+  int currentAngle = barrel->getAngle();
+  currentAngle += 2;
+  barrel->setAngle(currentAngle);
+}
+
+void Cannon::barrelDown(){
+  int currentAngle = barrel->getAngle();
+  currentAngle -= 2;
+  barrel->setAngle(currentAngle);
+}
+
+void Cannon::shoot(){
+  float *bombColor = new float[3];
+  bombColor[0] = 0.5;
+  bombColor[0] = 0.6;
+  bombColor[0] = 0.8;
+  float cx = tank.getCenterX() + (barrel.getHeight()/2)*cosf(barrel.getAngle());
+  float cy = tank.getCenterY() + (barrel.getHeight()/2)*sinf(barrel.getAngle());
+  bombList.push_back(Bomb(mtx, bombColor, (int)cx, (int)cy, 1, 100, 10, 10));
+  delete[] bombColor;
+}
+
+void Cannon::applyForces(){
+  for(int i = 0; i < getNumBombs(); i++){
+    bombList[i].applyForces();
+  }
+}
+
+Bomb::Bomb(GLMatrices *mtx, float* color, int cx, int cy, int radius, int numPolygons , float speedX, float speedY)
+  :Circle(mtx, color, cx, cy, radius, numPolygons)
+{
+  this->speedX = this->lastSpeedX = speedX;
+  this->speedY = this->lastSpeedY = speedY;
+  this->time = 0;
+}
+
+void Bomb::applyForces(float timeIncrement){
+
+  this->time += timeIncrement;
+  float x,y,ax,ay;
+
+  //Calculating x,y components of forces
+  //ax = this->lastSpeedX * airResistX;
+  //ay = this->gravity + (this->lastSpeedY * airResistY);
+
+  //Calculating speeds
+  this->lastSpeedX = this->lastSpeedX - (ax * timeIncrement);
+  this->lastSpeedY = this->lastSpeedY - (ay * timeIncrement);
+
+  ax = 0;
+  ay = gravity;
+  //Calculating current position
+  x = this->getCenterX() +  speedX * time - (0.5 * ax * time * time);
+  y = this->getCenterY() + speedY * time - (0.5 * ay * time * time); 
+
+  this->setCenter(x, y);
+}
+
+
 float triangle_rot_dir = 1;
 float rectangle_rot_dir = 1;
 bool triangle_rot_status = true;
@@ -513,6 +667,7 @@ void keyboard (GLFWwindow* window, int key, int scancode, int action, int mods)
 
     if (action == GLFW_RELEASE) {
         switch (key) {
+            
             case GLFW_KEY_C:
                 rectangle_rot_status = !rectangle_rot_status;
                 break;
@@ -528,6 +683,12 @@ void keyboard (GLFWwindow* window, int key, int scancode, int action, int mods)
     }
     else if (action == GLFW_PRESS) {
         switch (key) {
+            case GLFW_KEY_A:
+                can->barrelUp();
+                break;
+            case GLFW_KEY_B:
+                can->barrelDown();
+                break;
             case GLFW_KEY_ESCAPE:
                 quit(window);
                 break;
@@ -592,7 +753,7 @@ void reshapeWindow (GLFWwindow* window, int width, int height)
     // Matrices.projection = glm::perspective (fov, (GLfloat) fbwidth / (GLfloat) fbheight, 0.1f, 500.0f);
 
     // Ortho projection for 2D views
-    Matrices.projection = glm::ortho(-12.50f, 12.50f, -6.0f, 6.0f, 0.1f, 500.0f);
+    Matrices.projection = glm::ortho(-26.0f, 26.0f, -12.0f, 12.0f, 0.1f, 500.0f);
 }
 
 /* Render the scene with openGL */
@@ -621,8 +782,9 @@ void draw ()
   glm::mat4 MVP;	// MVP = Projection * View * Model
 
   // Load identity to model matrix
-  r->draw();
+  //r->draw();
   //c->draw();
+  can->draw();
 
 }
 
@@ -681,8 +843,9 @@ void initGL (GLFWwindow* window, int width, int height)
 {
     /* Objects should be created before any other gl function and shaders */
 	// Create the models
-  c = new Circle(&Matrices);
-  r = new Rectangle(&Matrices);
+  //c = new Circle(&Matrices);
+  //r = new Rectangle(&Matrices);
+  can = new Cannon(&Matrices);
 	//createTriangle (); // Generate the VAO, VBOs, vertices data & copy into the array buffer
 	//createRectangle ();
 	
