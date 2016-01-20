@@ -40,6 +40,8 @@ class Circle{
 public:
   Circle(GLMatrices *mtx, float* color, int cx=0, int cy=0, int radius=3, int numPolygons =100);
   Circle(const Circle& cr);
+  void swap(Circle &first, Circle &other);
+  Circle& operator=(Circle other);
   ~Circle();
   void setCenter(int x, int y);
   void setRadius(int r);
@@ -48,7 +50,7 @@ public:
   int getCenterY();
   int getRadius();
   VAO* getVAO();
-  virtual void draw();
+  void draw();
 private:
   GLfloat *vertex_buffer_data;
   GLfloat *color_buffer_data;
@@ -92,9 +94,10 @@ private:
   glm::vec3 axis;
 };
 
-class Bomb:public class Circle{
+class Bomb:public Circle{
 public:
-  Bomb(GLMatrices *mtx, float* color, int cx=0, int cy=0, int radius=3, int numPolygons =100);
+  Bomb(GLMatrices *mtx, float* color, int cx=0, int cy=0, int radius=3, int numPolygons =100, float speedX = 10.0f, float speedY = 10.0f);
+  Bomb(const Bomb& bmb);
   void applyForces(float timeIncrement);
 private: 
   float speedX; //initial speeds x componenet
@@ -116,12 +119,13 @@ public:
   void barrelDown();
   void shoot();
   void draw();
-  void applyForces();
+  void applyForces(float timeIncrement);
 private:
   Circle *tank;
   Rectangle *barrel;
   GLMatrices *mtx;
-  std::vector<Bomb> bombList;
+  //std::vector<Bomb> bombList;
+  Bomb *b;
 };
 
 Circle *c;
@@ -388,12 +392,14 @@ VAO* Circle::getVAO(){
 }
 
 void Circle::draw(){
+  //std::cout<<"Entered draw funtion"<<cx<<endl;
   glm::mat4 MVP; // MVP = Projection * View * Model
   // Load identity to model matrix
   mtx->model = glm::mat4(1.0f);
 
   /* Render your scene */
-
+  //std::cout<<"Centre = X - "<<cx<<endl;
+  //std::cout<<"Centre = Y - "<<cy<<endl;
   glm::mat4 mtranslate = glm::translate (glm::vec3((float)cx, (float)cy, 0.0f)); // glTranslatef
   //glm::mat4 rotateTriangle = glm::rotate((float)(triangle_rotation*M_PI/180.0f), glm::vec3(0,0,1));  // rotate about vector (1,0,0)
   glm::mat4 mtransform = mtranslate;
@@ -407,9 +413,28 @@ void Circle::draw(){
 
 }
 
+void Circle::swap(Circle &first, Circle &second){
+  using std::swap;
+  swap(first.vertex_buffer_data, second.vertex_buffer_data);
+  swap(first.color_buffer_data, second.color_buffer_data);
+  swap(first.vaobj, second.vaobj);
+  swap(first.cx, second.cx);
+  swap(first.cy, second.cy);
+  swap(first.radius, second.radius);
+  swap(first.numPolygons, second.numPolygons);
+  swap(first.mtx, second.mtx);
+}
+
+Circle& Circle::operator=(Circle other) // (1)
+{
+    swap(*this, other); // (2)
+
+    return *this;
+}
+
 Circle::~Circle(){
-  delete[] vertex_buffer_data;
-  delete[] color_buffer_data;
+  //delete[] vertex_buffer_data;
+  //delete[] color_buffer_data;
 }
 
 Rectangle::Rectangle(GLMatrices *mtx, float* color,int x, int y, int width, int height, int angle)
@@ -547,8 +572,8 @@ void Rectangle::draw(){
 }
 
 Rectangle::~Rectangle(){
-  delete[] vertex_buffer_data;
-  delete[] color_buffer_data;
+  //delete[] vertex_buffer_data;
+  //delete[] color_buffer_data;
 }
 
 Cannon::Cannon(GLMatrices *mtx, int x, int y){
@@ -569,29 +594,44 @@ Cannon::Cannon(GLMatrices *mtx, int x, int y){
   barrel = new Rectangle(mtx,colorBarrel,x, y, 2, 8, -70);
   glm::vec3 mtemp = glm::vec3(0, 0, 1);
   barrel->setAxis(mtemp);
+  //-------------------
+  float *bombColor = new float[3];
+  bombColor[0] = 0;
+  bombColor[0] = 0;
+  bombColor[0] = 0;
+  float cx = tank->getCenterX() + (barrel->getHeight()/2)*cosf(barrel->getAngle());
+  float cy = tank->getCenterY() + (barrel->getHeight()/2)*sinf(barrel->getAngle());
+  this->b = new Bomb(mtx, bombColor, (int)cx, (int)cy, 1, 100, 0.5, 0.5);
+  cout<<"Bobms properties"<<endl;
+  cout<<"Bomb cx, cy "<<b->getCenterX()<<" - "<<b->getCenterY()<<endl;
+  cout<<"Bomb radius "<<b->getRadius()<<endl;
+  //------------------------
 
-  bombList.reserve(10);
+  //bombList.reserve(10);
+
+  this->b = NULL;
 
   delete colorTank;
   delete colorBarrel;
 }
 
 Cannon::~Cannon(){
-  delete tank;
-  delete barrel;
+  //delete tank;
+  //delete barrel;
 }
 
 void Cannon::draw(){
   
   barrel->draw();
   tank->draw();
-  for(int i = 0; i < getNumBombs(); i++){
-    bombList[i].draw();
-  }
+  b->draw();
+  //for(int i = 0; i < getNumBombs(); i++){
+  //  bombList[i].draw();
+  //}
 }
 
 int Cannon::getNumBombs(){
-  return bombList.size();
+  return 1;
 }
 
 void Cannon::barrelUp(){
@@ -611,16 +651,23 @@ void Cannon::shoot(){
   bombColor[0] = 0.5;
   bombColor[0] = 0.6;
   bombColor[0] = 0.8;
-  float cx = tank.getCenterX() + (barrel.getHeight()/2)*cosf(barrel.getAngle());
-  float cy = tank.getCenterY() + (barrel.getHeight()/2)*sinf(barrel.getAngle());
-  bombList.push_back(Bomb(mtx, bombColor, (int)cx, (int)cy, 1, 100, 10, 10));
-  delete[] bombColor;
+  std::cout<<"Came here 1 Cannon::shoot" <<endl;
+  float cx = tank->getCenterX() + (barrel->getHeight()/2)*cosf(barrel->getAngle());
+  float cy = tank->getCenterY() + (barrel->getHeight()/2)*sinf(barrel->getAngle());
+  //this->b = new Bomb(mtx, bombColor, (int)cx, (int)cy, 1, 100, 0.5, 0.5);
+  //bombList.push_back(Bomb(mtx, bombColor, (int)cx, (int)cy, 1, 100, 10, 10));
+  //delete[] bombColor;
+  std::cout<<"Came here 2 Cannon::shoot" <<endl;
 }
 
-void Cannon::applyForces(){
-  for(int i = 0; i < getNumBombs(); i++){
-    bombList[i].applyForces();
-  }
+void Cannon::applyForces(float timeIncrement){
+  /*for(int i = 0; i < getNumBombs(); i++){
+    bombList[i].applyForces(timeIncrement);
+  }*/
+    if(this->b){
+      b->applyForces(timeIncrement);
+    }
+    
 }
 
 Bomb::Bomb(GLMatrices *mtx, float* color, int cx, int cy, int radius, int numPolygons , float speedX, float speedY)
@@ -631,10 +678,22 @@ Bomb::Bomb(GLMatrices *mtx, float* color, int cx, int cy, int radius, int numPol
   this->time = 0;
 }
 
+Bomb::Bomb(const Bomb& bmb)
+  :Circle(bmb)
+{
+  this->speedX = bmb.speedX;
+  this->lastSpeedX = bmb.lastSpeedX;
+  this->speedY = bmb.speedY;
+  this->lastSpeedY = bmb.lastSpeedY;
+  this->time = bmb.time;
+}
+
 void Bomb::applyForces(float timeIncrement){
 
   this->time += timeIncrement;
   float x,y,ax,ay;
+
+  std::cout<<"Inside applyForces of Bomb 1"<<endl;
 
   //Calculating x,y components of forces
   //ax = this->lastSpeedX * airResistX;
@@ -646,6 +705,7 @@ void Bomb::applyForces(float timeIncrement){
 
   ax = 0;
   ay = gravity;
+  std::cout<<"Inside applyForces of Bomb 2"<<endl;
   //Calculating current position
   x = this->getCenterX() +  speedX * time - (0.5 * ax * time * time);
   y = this->getCenterY() + speedY * time - (0.5 * ay * time * time); 
@@ -688,6 +748,9 @@ void keyboard (GLFWwindow* window, int key, int scancode, int action, int mods)
                 break;
             case GLFW_KEY_B:
                 can->barrelDown();
+                break;
+            case GLFW_KEY_SPACE:
+                can->shoot();
                 break;
             case GLFW_KEY_ESCAPE:
                 quit(window);
@@ -895,9 +958,10 @@ int main (int argc, char** argv)
 
         // Control based on time (Time based transformation like 5 degrees rotation every 0.5s)
         current_time = glfwGetTime(); // Time in seconds
-        if ((current_time - last_update_time) >= 0.5) { // atleast 0.5s elapsed since last frame
+        if ((current_time - last_update_time) >= 1) { // atleast 0.5s elapsed since last frame
             // do something every 0.5 seconds ..
             last_update_time = current_time;
+            //can->applyForces(1);
         }
     }
 
