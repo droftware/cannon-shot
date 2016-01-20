@@ -13,6 +13,11 @@
 
 using namespace std;
 
+const float LEFT_BOUND = -52.0f;
+const float RIGHT_BOUND = 52.0f;
+const float TOP_BOUND = 24.0f;
+const float BOTTOM_BOUND = -24.0f;
+
 struct VAO {
     GLuint VertexArrayID;
     GLuint VertexBuffer;
@@ -38,26 +43,26 @@ GLuint programID;
 
 class Circle{
 public:
-  Circle(GLMatrices *mtx, float* color, int cx=0, int cy=0, int radius=3, int numPolygons =100);
+  Circle(GLMatrices *mtx, float* color, float cx=0, float cy=0, float radius=3, int numPolygons =100);
   Circle(const Circle& cr);
   void swap(Circle &first, Circle &other);
   Circle& operator=(Circle other);
   ~Circle();
-  void setCenter(int x, int y);
-  void setRadius(int r);
+  void setCenter(float x, float y);
+  void setRadius(float r);
   void setNumPolygons(int num);
-  int getCenterX();
-  int getCenterY();
-  int getRadius();
+  float getCenterX();
+  float getCenterY();
+  float getRadius();
   VAO* getVAO();
   void draw();
 private:
   GLfloat *vertex_buffer_data;
   GLfloat *color_buffer_data;
   VAO *vaobj;
-  int cx;
-  int cy;
-  int radius;
+  float cx;
+  float cy;
+  float radius;
   int numPolygons;
   GLMatrices *mtx;
 };
@@ -73,6 +78,7 @@ public:
   int getWidth();
   int getHeight();
   float getAngle();
+  float getPosAngle();
   glm::vec3 getAxis();
   void setTopLeftX(int x);
   void setTopLeftY(int y);
@@ -94,38 +100,39 @@ private:
   glm::vec3 axis;
 };
 
-class Bomb:public Circle{
+class Bomb{
 public:
-  Bomb(GLMatrices *mtx, float* color, int cx=0, int cy=0, int radius=3, int numPolygons =100, float speedX = 10.0f, float speedY = 10.0f);
-  Bomb(const Bomb& bmb);
-  void applyForces(float timeIncrement);
-private: 
-  float speedX; //initial speeds x componenet
-  float speedY; //initial speeds y component
-  float lastSpeedX;
-  float lastSpeedY;
+  Bomb(GLMatrices *mtx, float cx, float cy, float speedX, float speedY);
+  bool getDynamic();
+  void draw();
+  void applyForces(float timeInstance);
+  void setPosition(float x, float y);
+  void setDynamic(bool value);
+  void setSpeed(float ux, float uy);
+private:
+  Circle *circ;
+  float speedX;
+  float speedY;
   float time;
-  static const float gravity = 9.8f;
-  static const float airResistX = 0.2f; // air resistance force x component
-  static const float airResistY = 0.2f; // air resistance force y component
+  bool dynamic;
+  static const float GRAVITY = 3.5f;
 };
 
 class Cannon{
 public:
-  Cannon(GLMatrices *mtx, int x = -22, int y = -10);
+  Cannon(GLMatrices *mtx, int x = -48, int y = -21);
   ~Cannon();
-  int getNumBombs();
+
   void barrelUp();
   void barrelDown();
   void shoot();
   void draw();
-  void applyForces(float timeIncrement);
+  void applyForces(float timeInstance);
 private:
   Circle *tank;
   Rectangle *barrel;
   GLMatrices *mtx;
-  //std::vector<Bomb> bombList;
-  Bomb *b;
+  Bomb *ammo;
 };
 
 Circle *c;
@@ -138,7 +145,7 @@ GLuint LoadShaders(const char * vertex_file_path,const char * fragment_file_path
 	// Create the shaders
 	GLuint VertexShaderID = glCreateShader(GL_VERTEX_SHADER);
 	GLuint FragmentShaderID = glCreateShader(GL_FRAGMENT_SHADER);
-
+                                        
 	// Read the Vertex Shader code from the file
 	std::string VertexShaderCode;
 	std::ifstream VertexShaderStream(vertex_file_path, std::ios::in);
@@ -302,7 +309,7 @@ void draw3DObject (struct VAO* vao)
  * Customizable functions *
  **************************/
 
-Circle::Circle(GLMatrices *mtx, float* color, int cx, int cy, int radius, int numPolygons)
+Circle::Circle(GLMatrices *mtx, float* color, float cx, float cy, float radius, int numPolygons)
 {
   vertex_buffer_data = new GLfloat[500 * 9];
   color_buffer_data = new GLfloat[500 * 9];
@@ -348,6 +355,7 @@ Circle::Circle(GLMatrices *mtx, float* color, int cx, int cy, int radius, int nu
 
 //copy constructor
 Circle::Circle(const Circle& circ){
+  cout<<"Entered circle copy constructor"<<endl;
   vertex_buffer_data = new GLfloat[500 * 9];
   color_buffer_data = new GLfloat[500 * 9];
   this->cx = circ.cx;
@@ -362,12 +370,12 @@ Circle::Circle(const Circle& circ){
   vaobj = create3DObject(GL_TRIANGLES, 3*numPolygons + 3, vertex_buffer_data, color_buffer_data, GL_FILL);
 }
 
-void Circle::setCenter(int x, int y){
+void Circle::setCenter(float x, float y){
   cx = x;
   cy = y;
 }
 
-void Circle::setRadius(int r){
+void Circle::setRadius(float r){
   radius = r;
 }
 
@@ -375,15 +383,15 @@ void Circle::setNumPolygons(int x){
   numPolygons = x;
 }
 
-int Circle::getCenterX(){
+float Circle::getCenterX(){
   return cx;
 }
 
-int Circle::getCenterY(){
+float Circle::getCenterY(){
   return cy;
 }
 
-int Circle::getRadius(){
+float Circle::getRadius(){
   return radius;
 }
 
@@ -400,7 +408,7 @@ void Circle::draw(){
   /* Render your scene */
   //std::cout<<"Centre = X - "<<cx<<endl;
   //std::cout<<"Centre = Y - "<<cy<<endl;
-  glm::mat4 mtranslate = glm::translate (glm::vec3((float)cx, (float)cy, 0.0f)); // glTranslatef
+  glm::mat4 mtranslate = glm::translate (glm::vec3(cx, cy, 0.0f)); // glTranslatef
   //glm::mat4 rotateTriangle = glm::rotate((float)(triangle_rotation*M_PI/180.0f), glm::vec3(0,0,1));  // rotate about vector (1,0,0)
   glm::mat4 mtransform = mtranslate;
   mtx->model *= mtransform;
@@ -427,14 +435,15 @@ void Circle::swap(Circle &first, Circle &second){
 
 Circle& Circle::operator=(Circle other) // (1)
 {
+    cout<<"Called circle operator="<<endl;
     swap(*this, other); // (2)
 
     return *this;
 }
 
 Circle::~Circle(){
-  //delete[] vertex_buffer_data;
-  //delete[] color_buffer_data;
+  delete[] vertex_buffer_data;
+  delete[] color_buffer_data;
 }
 
 Rectangle::Rectangle(GLMatrices *mtx, float* color,int x, int y, int width, int height, int angle)
@@ -525,6 +534,10 @@ float Rectangle::getAngle(){
   return angle;
 }
 
+float Rectangle::getPosAngle(){
+  return angle + 90.0f;
+}
+
 glm::vec3 Rectangle::getAxis(){
   return axis;
 }
@@ -572,8 +585,8 @@ void Rectangle::draw(){
 }
 
 Rectangle::~Rectangle(){
-  //delete[] vertex_buffer_data;
-  //delete[] color_buffer_data;
+  delete[] vertex_buffer_data;
+  delete[] color_buffer_data;
 }
 
 Cannon::Cannon(GLMatrices *mtx, int x, int y){
@@ -585,134 +598,135 @@ Cannon::Cannon(GLMatrices *mtx, int x, int y){
   colorTank[0] = 0;
   colorTank[1] = 1;
   colorTank[2] = 0;
-  tank = new Circle(mtx,colorTank,x,y,2,100);
+  tank = new Circle(mtx,colorTank,(float)x,(float)y,4.0f,100);
 
   float *colorBarrel = new float[3];
   colorBarrel[0] = 0;
   colorBarrel[1] = 0;
   colorBarrel[2] = 1;
-  barrel = new Rectangle(mtx,colorBarrel,x, y, 2, 8, -70);
+  barrel = new Rectangle(mtx,colorBarrel,x, y, 4, 16, -70);
   glm::vec3 mtemp = glm::vec3(0, 0, 1);
   barrel->setAxis(mtemp);
-  //-------------------
-  float *bombColor = new float[3];
-  bombColor[0] = 0;
-  bombColor[0] = 0;
-  bombColor[0] = 0;
-  float cx = tank->getCenterX() + (barrel->getHeight()/2)*cosf(barrel->getAngle());
-  float cy = tank->getCenterY() + (barrel->getHeight()/2)*sinf(barrel->getAngle());
-  this->b = new Bomb(mtx, bombColor, (int)cx, (int)cy, 1, 100, 0.5, 0.5);
-  cout<<"Bobms properties"<<endl;
-  cout<<"Bomb cx, cy "<<b->getCenterX()<<" - "<<b->getCenterY()<<endl;
-  cout<<"Bomb radius "<<b->getRadius()<<endl;
-  //------------------------
-
-  //bombList.reserve(10);
-
-  this->b = NULL;
+  float radAngle = barrel->getPosAngle() * M_PI/180.0f;
+  float cx = tank->getCenterX() + (barrel->getHeight()/2)*cosf(radAngle);
+  float cy = tank->getCenterY() + (barrel->getHeight()/2)*sinf(radAngle);
+  float ux = 2.0f*cosf(radAngle);
+  float uy = 2.0f*sinf(radAngle);  
+  this->ammo = new Bomb(mtx, cx, cy, ux, uy); 
 
   delete colorTank;
   delete colorBarrel;
 }
 
 Cannon::~Cannon(){
-  //delete tank;
-  //delete barrel;
+  delete tank;
+  delete barrel;
 }
 
 void Cannon::draw(){
-  
+  if(ammo){
+    ammo->draw();
+  }
   barrel->draw();
   tank->draw();
-  b->draw();
-  //for(int i = 0; i < getNumBombs(); i++){
-  //  bombList[i].draw();
-  //}
 }
 
-int Cannon::getNumBombs(){
-  return 1;
-}
+
 
 void Cannon::barrelUp(){
   int currentAngle = barrel->getAngle();
   currentAngle += 2;
+  if(currentAngle >=0 )currentAngle = 0;
   barrel->setAngle(currentAngle);
 }
 
 void Cannon::barrelDown(){
   int currentAngle = barrel->getAngle();
   currentAngle -= 2;
+  if(currentAngle <= -90 )currentAngle = -90;
   barrel->setAngle(currentAngle);
 }
 
 void Cannon::shoot(){
-  float *bombColor = new float[3];
-  bombColor[0] = 0.5;
-  bombColor[0] = 0.6;
-  bombColor[0] = 0.8;
-  std::cout<<"Came here 1 Cannon::shoot" <<endl;
-  float cx = tank->getCenterX() + (barrel->getHeight()/2)*cosf(barrel->getAngle());
-  float cy = tank->getCenterY() + (barrel->getHeight()/2)*sinf(barrel->getAngle());
-  //this->b = new Bomb(mtx, bombColor, (int)cx, (int)cy, 1, 100, 0.5, 0.5);
-  //bombList.push_back(Bomb(mtx, bombColor, (int)cx, (int)cy, 1, 100, 10, 10));
-  //delete[] bombColor;
-  std::cout<<"Came here 2 Cannon::shoot" <<endl;
+  if(!this->ammo->getDynamic()){
+    cout<<"Tank centre - (x,) = "<<tank->getCenterX()<<" , "<<tank->getCenterY()<<endl;
+    cout<<"Angle - "<<barrel->getPosAngle()<<endl;
+    float radAngle = barrel->getPosAngle() * M_PI/180.0f;
+    float xAdd = (barrel->getHeight()/2)*cosf(radAngle);
+    float yAdd = (barrel->getHeight()/2)*sinf(radAngle);
+    cout<<"X addition - "<<xAdd<<endl;
+    cout<<"Y addition - "<<yAdd<<endl;
+    float cx = tank->getCenterX() + xAdd;
+    float cy = tank->getCenterY() + yAdd;
+    cout<<"Final bomb position X - "<<cx<<endl;
+    cout<<"Final bomb position Y - "<<cy<<endl;  
+    float ux = 2.0f*cosf(radAngle);
+    float uy = 2.0f*sinf(radAngle);  
+    this->ammo->setPosition(cx, cy);
+    this->ammo->setSpeed(ux, uy);
+    this->ammo->setDynamic(true);
+  }
+  
 }
 
-void Cannon::applyForces(float timeIncrement){
-  /*for(int i = 0; i < getNumBombs(); i++){
-    bombList[i].applyForces(timeIncrement);
-  }*/
-    if(this->b){
-      b->applyForces(timeIncrement);
+void Cannon::applyForces(float timeInstance){
+  if(ammo){
+    ammo->applyForces(timeInstance);
+  }    
+}
+
+Bomb::Bomb(GLMatrices *mtx, float cx, float cy, float speedX, float speedY){
+  float *colorCirc = new float[3];
+  colorCirc[0] = 1;
+  colorCirc[1] = 0;
+  colorCirc[2] = 0;
+  this->circ = new Circle(mtx, colorCirc, cx, cy, 2.0f, 100);
+  this->speedX = speedX;
+  this->speedY = speedY;
+  this->time = 0.0f;
+  this->dynamic = false;
+  delete[] colorCirc;
+}
+
+void Bomb::setSpeed(float ux, float uy){
+  speedX = ux;
+  speedY = uy;
+}
+
+void Bomb::setPosition(float x, float y){
+  circ->setCenter(x, y);
+}
+
+void Bomb::draw(){
+  circ->draw();
+}
+
+void Bomb::applyForces(float timeInstance){
+  if(dynamic){
+    time += timeInstance;
+    //cout<<"SpeedX = "<<speedX<<" SpeedY "<<speedY<<endl;
+    //cout<<"Before (x,y) -> "<<circ->getCenterX()<<" , "<<circ->getCenterY()<<endl;
+    float x = circ->getCenterX() + speedX * time;
+    float y = circ->getCenterY() + speedY * time - (0.5f * GRAVITY * time * time);
+    //cout<<"After (x,y) -> "<<x<<" , "<<y<<endl;
+    setPosition(x,y);
+    float yrp = y - this->circ->getRadius();
+    float xrp = x - this->circ->getRadius();
+    if(yrp > TOP_BOUND || yrp < BOTTOM_BOUND || xrp > RIGHT_BOUND || xrp < LEFT_BOUND)
+    {
+      this->setDynamic(false);
+      time = 0.0f;
     }
-    
+  }
 }
 
-Bomb::Bomb(GLMatrices *mtx, float* color, int cx, int cy, int radius, int numPolygons , float speedX, float speedY)
-  :Circle(mtx, color, cx, cy, radius, numPolygons)
-{
-  this->speedX = this->lastSpeedX = speedX;
-  this->speedY = this->lastSpeedY = speedY;
-  this->time = 0;
+void Bomb::setDynamic(bool value){
+  this->dynamic = value;
 }
 
-Bomb::Bomb(const Bomb& bmb)
-  :Circle(bmb)
-{
-  this->speedX = bmb.speedX;
-  this->lastSpeedX = bmb.lastSpeedX;
-  this->speedY = bmb.speedY;
-  this->lastSpeedY = bmb.lastSpeedY;
-  this->time = bmb.time;
+bool Bomb::getDynamic(){
+  return this->dynamic;
 }
-
-void Bomb::applyForces(float timeIncrement){
-
-  this->time += timeIncrement;
-  float x,y,ax,ay;
-
-  std::cout<<"Inside applyForces of Bomb 1"<<endl;
-
-  //Calculating x,y components of forces
-  //ax = this->lastSpeedX * airResistX;
-  //ay = this->gravity + (this->lastSpeedY * airResistY);
-
-  //Calculating speeds
-  this->lastSpeedX = this->lastSpeedX - (ax * timeIncrement);
-  this->lastSpeedY = this->lastSpeedY - (ay * timeIncrement);
-
-  ax = 0;
-  ay = gravity;
-  std::cout<<"Inside applyForces of Bomb 2"<<endl;
-  //Calculating current position
-  x = this->getCenterX() +  speedX * time - (0.5 * ax * time * time);
-  y = this->getCenterY() + speedY * time - (0.5 * ay * time * time); 
-
-  this->setCenter(x, y);
-}
-
 
 float triangle_rot_dir = 1;
 float rectangle_rot_dir = 1;
@@ -816,12 +830,12 @@ void reshapeWindow (GLFWwindow* window, int width, int height)
     // Matrices.projection = glm::perspective (fov, (GLfloat) fbwidth / (GLfloat) fbheight, 0.1f, 500.0f);
 
     // Ortho projection for 2D views
-    Matrices.projection = glm::ortho(-26.0f, 26.0f, -12.0f, 12.0f, 0.1f, 500.0f);
+    Matrices.projection = glm::ortho(LEFT_BOUND, RIGHT_BOUND, BOTTOM_BOUND, TOP_BOUND, 0.1f, 500.0f);
 }
 
 /* Render the scene with openGL */
 /* Edit this function according to your assignment */
-void draw ()
+void draw()
 {
   // clear the color and depth in the frame buffer
   glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -958,10 +972,10 @@ int main (int argc, char** argv)
 
         // Control based on time (Time based transformation like 5 degrees rotation every 0.5s)
         current_time = glfwGetTime(); // Time in seconds
-        if ((current_time - last_update_time) >= 1) { // atleast 0.5s elapsed since last frame
+        if ((current_time - last_update_time) >= 0.01) { // atleast 0.5s elapsed since last frame
             // do something every 0.5 seconds ..
             last_update_time = current_time;
-            //can->applyForces(1);
+            can->applyForces(0.01f);
         }
     }
 
