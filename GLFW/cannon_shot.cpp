@@ -100,22 +100,42 @@ private:
   glm::vec3 axis;
 };
 
-class Bomb{
+class Item{
+public:
+  Item(float mass, float x, float y, float ux, float uy);
+  virtual void applyForces(float timeInstance);
+  void applyGravity();
+  void applyAcceleration();
+  void applyPosition(float timeInstance);
+  void setSpeed(float ux, float uy);
+  void setPosition(float x, float y);
+  void setTime(float time);
+  float getPositionX();
+  float getPositionY();
+protected:
+  static const float GRAVITY = 45.0f;
+  float mass;
+  float forceX;
+  float forceY;
+  float x;
+  float y;
+  float ux;
+  float uy;
+  float ax;
+  float ay;
+  float time;
+};
+
+class Bomb : public Item{
 public:
   Bomb(GLMatrices *mtx, float cx, float cy, float speedX, float speedY);
   bool getDynamic();
   void draw();
   void applyForces(float timeInstance);
-  void setPosition(float x, float y);
   void setDynamic(bool value);
-  void setSpeed(float ux, float uy);
 private:
   Circle *circ;
-  float speedX;
-  float speedY;
-  float time;
   bool dynamic;
-  static const float GRAVITY = 3.5f;
 };
 
 class Cannon{
@@ -133,6 +153,7 @@ private:
   Rectangle *barrel;
   GLMatrices *mtx;
   Bomb *ammo;
+  float bombInitSpeed;
 };
 
 Circle *c;
@@ -610,8 +631,9 @@ Cannon::Cannon(GLMatrices *mtx, int x, int y){
   float radAngle = barrel->getPosAngle() * M_PI/180.0f;
   float cx = tank->getCenterX() + (barrel->getHeight()/2)*cosf(radAngle);
   float cy = tank->getCenterY() + (barrel->getHeight()/2)*sinf(radAngle);
-  float ux = 2.0f*cosf(radAngle);
-  float uy = 2.0f*sinf(radAngle);  
+  bombInitSpeed = 80.0f;
+  float ux = bombInitSpeed*cosf(radAngle);
+  float uy = bombInitSpeed*sinf(radAngle);  
   this->ammo = new Bomb(mtx, cx, cy, ux, uy); 
 
   delete colorTank;
@@ -660,10 +682,13 @@ void Cannon::shoot(){
     float cy = tank->getCenterY() + yAdd;
     cout<<"Final bomb position X - "<<cx<<endl;
     cout<<"Final bomb position Y - "<<cy<<endl;  
-    float ux = 2.0f*cosf(radAngle);
-    float uy = 2.0f*sinf(radAngle);  
+    float ux = bombInitSpeed*cosf(radAngle);
+    float uy = bombInitSpeed*sinf(radAngle); 
+    cout<<"Bomb speed X "<<ux<<endl; 
+    cout<<"Bomb speed Y "<<uy<<endl; 
     this->ammo->setPosition(cx, cy);
     this->ammo->setSpeed(ux, uy);
+    this->ammo->setTime(0.0f);
     this->ammo->setDynamic(true);
   }
   
@@ -675,27 +700,18 @@ void Cannon::applyForces(float timeInstance){
   }    
 }
 
-Bomb::Bomb(GLMatrices *mtx, float cx, float cy, float speedX, float speedY){
+Bomb::Bomb(GLMatrices *mtx, float cx, float cy, float speedX, float speedY)
+  : Item(5.0f, cx, cy, speedX, speedY)
+{
   float *colorCirc = new float[3];
   colorCirc[0] = 1;
   colorCirc[1] = 0;
   colorCirc[2] = 0;
-  this->circ = new Circle(mtx, colorCirc, cx, cy, 2.0f, 100);
-  this->speedX = speedX;
-  this->speedY = speedY;
-  this->time = 0.0f;
+  this->circ = new Circle(mtx, colorCirc, cx, cy, 2.0f, 50);
   this->dynamic = false;
   delete[] colorCirc;
 }
 
-void Bomb::setSpeed(float ux, float uy){
-  speedX = ux;
-  speedY = uy;
-}
-
-void Bomb::setPosition(float x, float y){
-  circ->setCenter(x, y);
-}
 
 void Bomb::draw(){
   circ->draw();
@@ -703,6 +719,8 @@ void Bomb::draw(){
 
 void Bomb::applyForces(float timeInstance){
   if(dynamic){
+    Item::applyForces(timeInstance);
+    /*
     time += timeInstance;
     //cout<<"SpeedX = "<<speedX<<" SpeedY "<<speedY<<endl;
     //cout<<"Before (x,y) -> "<<circ->getCenterX()<<" , "<<circ->getCenterY()<<endl;
@@ -710,13 +728,18 @@ void Bomb::applyForces(float timeInstance){
     float y = circ->getCenterY() + speedY * time - (0.5f * GRAVITY * time * time);
     //cout<<"After (x,y) -> "<<x<<" , "<<y<<endl;
     setPosition(x,y);
+    */
+    float tx = getPositionX();
+    float ty = getPositionY();
+    circ->setCenter(tx,ty);
     float yrp = y - this->circ->getRadius();
     float xrp = x - this->circ->getRadius();
+
     if(yrp > TOP_BOUND || yrp < BOTTOM_BOUND || xrp > RIGHT_BOUND || xrp < LEFT_BOUND)
     {
       this->setDynamic(false);
-      time = 0.0f;
     }
+    
   }
 }
 
@@ -727,6 +750,65 @@ void Bomb::setDynamic(bool value){
 bool Bomb::getDynamic(){
   return this->dynamic;
 }
+
+Item::Item(float mass, float x, float y, float ux, float uy){
+  this->mass = mass;
+  this->x = x;
+  this->y = y;
+  this->ux = ux;
+  this->uy = uy;
+  this->forceX = 0.0f;
+  this->forceY = 0.0f;
+  this->ax = 0.0f;
+  this->ay = 0.0f;
+  this->time = 0.0f;
+}
+void Item::applyForces(float timeInstance){
+  this->forceX = 0.0f;
+  this->forceY = 0.0f;
+  applyGravity();
+  applyAcceleration();
+  applyPosition(timeInstance);
+}
+void Item::applyGravity(){
+  this->forceY -= this->mass * GRAVITY;
+}
+
+void Item::setTime(float time){
+  this->time = time;
+}
+
+void Item::applyAcceleration(){
+  this->ax = this->forceX / this->mass;
+  this->ay = this->forceY / this->mass;
+}
+
+void Item::applyPosition(float timeInstance){
+  time += timeInstance;
+  x = x + ux * timeInstance + (0.5 * ax * timeInstance * timeInstance);
+  y = y + uy * timeInstance + (0.5 * ay * timeInstance * timeInstance);
+  ux = ux + ax * timeInstance;
+  uy = uy + ay * timeInstance;
+}
+
+float Item::getPositionX(){
+  return x;
+}
+
+float Item::getPositionY(){
+  return y;
+}
+
+void Item::setPosition(float x, float y){
+  this->x = x;
+  this->y = y;
+}
+
+void Item::setSpeed(float ux, float uy){
+  this->ux = ux;
+  this->uy = uy;
+}
+
 
 float triangle_rot_dir = 1;
 float rectangle_rot_dir = 1;
