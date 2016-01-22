@@ -18,6 +18,7 @@ const float RIGHT_BOUND = 52.0f;
 const float TOP_BOUND = 24.0f;
 const float BOTTOM_BOUND = -24.0f;
 
+
 struct VAO {
     GLuint VertexArrayID;
     GLuint VertexBuffer;
@@ -108,16 +109,19 @@ public:
   void applyNormalForce();
   void applyAcceleration();
   void applyPosition(float timeInstance);
+  virtual void applyOtherForces();
   void applyCollisionGround();
   void applyFriction();
   bool checkCollisionGround();
   bool checkStoppage();
-  bool checkCollisionItem(Item& other);
   void setSpeed(float ux, float uy);
   void setPosition(float x, float y);
   void setTime(float time);
   float getPositionX();
   float getPositionY();
+  friend bool checkCollisionItem(Item &first, Item &second);
+  friend void simulateCollisionItem(Item &first, Item &second);
+  friend void handleCollisionsItem();
 protected:
   static const float GRAVITY = 75.0f;
   static const float BOUNCE_COF = 0.4f;
@@ -127,14 +131,14 @@ protected:
   float forceY;
   float x;
   float y;
+  float prevX;
+  float prevY;
   float ux;
   float uy;
   float ax;
   float ay;
   float time;
   float radius;
-  bool horizontalStop;
-  bool verticalStop;
 };
 
 class Bomb : public Item{
@@ -185,8 +189,9 @@ class Target:public Item
 {
 public:
   Target(GLMatrices *mtx, Block* pillar);
-  void applyForces(float timeInstance);
   void draw();
+  void applyOtherForces();
+  void applyForces(float timeInstance);
 private:
   Circle *circ;
   Block *pillar;
@@ -197,6 +202,8 @@ Rectangle *r;
 Cannon *can;
 Block *b1;
 Target *t1;
+std::vector<Item*> movableList;
+void handleCollisionsItem();
 
 /* Function to load Shaders - Use it as it is */
 GLuint LoadShaders(const char * vertex_file_path,const char * fragment_file_path) {
@@ -673,7 +680,7 @@ Cannon::Cannon(GLMatrices *mtx, int x, int y){
   float ux = bombInitSpeed*cosf(radAngle);
   float uy = bombInitSpeed*sinf(radAngle);  
   this->ammo = new Bomb(mtx, cx, cy, ux, uy); 
-
+  movableList.push_back(this->ammo);
   delete colorTank;
   delete colorBarrel;
 }
@@ -691,8 +698,6 @@ void Cannon::draw(){
   tank->draw();
 }
 
-
-
 void Cannon::barrelUp(){
   int currentAngle = barrel->getAngle();
   currentAngle += 2;
@@ -709,21 +714,21 @@ void Cannon::barrelDown(){
 
 void Cannon::shoot(){
   if(!this->ammo->getDynamic()){
-    cout<<"Tank centre - (x,) = "<<tank->getCenterX()<<" , "<<tank->getCenterY()<<endl;
-    cout<<"Angle - "<<barrel->getPosAngle()<<endl;
+    //cout<<"Tank centre - (x,) = "<<tank->getCenterX()<<" , "<<tank->getCenterY()<<endl;
+    //cout<<"Angle - "<<barrel->getPosAngle()<<endl;
     float radAngle = barrel->getPosAngle() * M_PI/180.0f;
     float xAdd = (barrel->getHeight()/2)*cosf(radAngle);
     float yAdd = (barrel->getHeight()/2)*sinf(radAngle);
-    cout<<"X addition - "<<xAdd<<endl;
-    cout<<"Y addition - "<<yAdd<<endl;
+    //cout<<"X addition - "<<xAdd<<endl;
+    //cout<<"Y addition - "<<yAdd<<endl;
     float cx = tank->getCenterX() + xAdd;
     float cy = tank->getCenterY() + yAdd;
-    cout<<"Final bomb position X - "<<cx<<endl;
-    cout<<"Final bomb position Y - "<<cy<<endl;  
+    //cout<<"Final bomb position X - "<<cx<<endl;
+    //cout<<"Final bomb position Y - "<<cy<<endl;  
     float ux = bombInitSpeed*cosf(radAngle);
     float uy = bombInitSpeed*sinf(radAngle); 
-    cout<<"Bomb speed X "<<ux<<endl; 
-    cout<<"Bomb speed Y "<<uy<<endl; 
+    //cout<<"Bomb speed X "<<ux<<endl; 
+    //cout<<"Bomb speed Y "<<uy<<endl; 
     this->ammo->setPosition(cx, cy);
     this->ammo->setSpeed(ux, uy);
     this->ammo->setTime(0.0f);
@@ -783,8 +788,6 @@ void Bomb::applyForces(float timeInstance){
 
 void Bomb::setDynamic(bool value){
   this->dynamic = value;
-  this->horizontalStop = !value;
-  this->verticalStop = !value;
 }
 
 bool Bomb::getDynamic(){
@@ -793,6 +796,8 @@ bool Bomb::getDynamic(){
 
 Item::Item(float mass, float x, float y, float ux, float uy, float radius){
   this->mass = mass;
+  this->prevX = x;
+  this->prevY = y;
   this->x = x;
   this->y = y;
   this->ux = ux;
@@ -803,8 +808,6 @@ Item::Item(float mass, float x, float y, float ux, float uy, float radius){
   this->ax = 0.0f;
   this->ay = 0.0f;
   this->time = 0.0f;
-  this->horizontalStop = false;
-  this->verticalStop = false;
 }
 
 
@@ -813,6 +816,8 @@ void Item::applyForces(float timeInstance){
   this->forceY = 0.0f;
   applyGravity();
   //applyNormalForce();
+  applyOtherForces();
+  handleCollisionsItem();
   applyFriction();
   applyCollisionGround();
   applyAcceleration();
@@ -826,6 +831,9 @@ bool Item::checkCollisionGround(){
   return (y - BOTTOM_BOUND <= radius);
 }
 
+void Item::applyOtherForces(){
+  //To be implemented by other inherited classes
+}
 void Item::applyNormalForce(){
   if(checkCollisionGround()){
     this->forceY += this->mass * GRAVITY;
@@ -840,22 +848,7 @@ void Item::applyFriction(){
     }
     else direction = 1.0f;
     this->forceX += direction * this->mass * GRAVITY  * FRICTION_COF;
-    if(ux < 1.0f)
-      horizontalStop = true;
   }
-}
-
-bool Item::checkCollisionItem(Item &other){
-  float x12 = x - other.x;
-  float y12 = y - other.y;
-  float dist = x12*x12 + y12*y12;
-  float r12 = radius + other.radius;
-  r12 = r12 * r12;
-  if(dist <= r12)
-    return true;
-  else
-    return false;
-  cout<<"*******COLLISION HAPPENED***********"<<endl;
 }
 
 void Item::applyCollisionGround(){
@@ -871,7 +864,6 @@ void Item::applyCollisionGround(){
       //cout<<"BAD LUCK"<<endl;
       uy = 0.0f;
       y = BOTTOM_BOUND + radius;
-      verticalStop = true;
     }
 
   }
@@ -888,10 +880,13 @@ void Item::applyAcceleration(){
 
 void Item::applyPosition(float timeInstance){
   time += timeInstance;
+  prevX = x;
+  prevY = y;
   x = x + ux * timeInstance + (0.5 * ax * timeInstance * timeInstance);
   y = y + uy * timeInstance + (0.5 * ay * timeInstance * timeInstance);
   ux = ux + ax * timeInstance;
   uy = uy + ay * timeInstance;
+  //cout<<"Speed X -> "<<ux<<" Speed Y -> "<<uy<<endl;
   //cout<<"applyPosition speed Y -> "<<uy;
   //cout<<" applyPosition Y -> "<<y<<endl;
 }
@@ -905,7 +900,11 @@ float Item::getPositionY(){
 }
 
 bool Item::checkStoppage(){
-  if(horizontalStop && verticalStop)
+  float tx = x - prevX;
+  float ty = y - prevY;
+  if(tx < 0.0f)tx *= -1.0f;
+  if(ty < 0.0f)ty *= -1.0f;
+  if(tx < 0.1f && ty < 0.1f)
     return true;
   else return false;
 }
@@ -957,20 +956,97 @@ Target::Target(GLMatrices *mtx, Block* pillar)
   this->pillar = pillar;
 }
 
-void Target::applyForces(float timeInstance){
-  // has to be implemented
-}
-
 void Target::draw(){
   circ->draw();
 }
 
+void Target::applyForces(float timeInstance){
+  Item::applyForces(timeInstance);
+  float tx = getPositionX();
+  float ty = getPositionY();
+  circ->setCenter(tx,ty);
+}
 
+void Target::applyOtherForces(){
+  float lb = pillar->getPositionX() - pillar->getWidth()/2.0f;
+  float rb = pillar->getPositionX() + pillar->getWidth()/2.0f;
+  float ub = pillar->getPositionY() + pillar->getHeight()/2.0f + circ->getRadius() + 1.0f;
+  if(this->x >= lb && this->x <=rb && this->y <= ub)
+    this->forceY += this->mass * GRAVITY;
+}
 
 float triangle_rot_dir = 1;
 float rectangle_rot_dir = 1;
 bool triangle_rot_status = true;
 bool rectangle_rot_status = true;
+
+bool checkCollisionItem(Item &first, Item &second){
+  float x12 = first.x - second.x;
+  float y12 = first.y - second.y;
+  float dist = x12*x12 + y12*y12;
+  float r12 = first.radius + second.radius;
+  r12 = r12 * r12;
+  if(dist <= r12)
+    {
+      cout<<"*******COLLISION HAPPENED***********"<<endl;
+      return true;
+    }
+  else
+    {
+      //cout<<"####### NO COLLISION ####"<<endl;
+      return false;
+    }
+
+}
+
+void simulateCollisionItem(Item &first, Item &second){
+
+  //Vector pointing in direction of collision
+  float cx = first.x - second.x;
+  float cy = first.y - second.y;
+
+  //Distance of the above vector
+  float distance = (float)sqrt(cx*cx + cy*cy);
+
+  //Unit vector in direction of collision
+  float unitX, unitY;
+  if(distance == 0.0f){
+    unitX = 1.0f;
+    unitY = 0.0f;
+  }
+  else{
+    unitX = cx/distance;
+    unitY = cy/distance;
+  }
+
+  // Component of velocity of Item first,second in 
+  // in direction of collision
+  float firstInitComp = first.ux * unitX + first.uy * unitY;
+  float secondInitComp = second.ux * unitX + second.uy * unitY;
+
+  float firstFinalComp = (firstInitComp*(first.mass - second.mass) + 2*second.mass*secondInitComp)/(first.mass + second.mass);
+  float secondFinalComp = (secondInitComp*(second.mass - first.mass) + 2*first.mass*firstInitComp)/(first.mass + second.mass);
+
+  float firstChange = firstFinalComp - firstInitComp;
+  float secondChange = secondFinalComp - secondInitComp;
+
+  first.ux += firstChange * unitX;
+  first.uy += firstChange * unitY;
+
+  second.ux += secondChange * unitX;
+  second.uy += secondChange * unitY;
+}
+
+void handleCollisionsItem(){
+  //cout<<"Movable list size "<<movableList.size()<<endl;
+  for(int i = 0; i < movableList.size(); i++){
+    for(int j = i + 1; j < movableList.size(); j++){
+      if(checkCollisionItem(*movableList[i], *movableList[j]))
+        simulateCollisionItem(*movableList[i], *movableList[j]);
+    }
+  }
+
+}
 
 /* Executed when a regular key is pressed/released/held-down */
 /* Prefered for Keyboard events */
@@ -1166,6 +1242,7 @@ void initGL (GLFWwindow* window, int width, int height)
   can = new Cannon(&Matrices);
   b1 = new Block(&Matrices, -2, BOTTOM_BOUND + 6, 5, 12);
   t1 = new Target(&Matrices, b1);
+  movableList.push_back(t1);
 	//createTriangle (); // Generate the VAO, VBOs, vertices data & copy into the array buffer
 	//createRectangle ();
 	
@@ -1219,6 +1296,7 @@ int main (int argc, char** argv)
             // do something every 0.5 seconds ..
             last_update_time = current_time;
             can->applyForces(0.01f);
+            t1->applyForces(0.01f);
         }
     }
 
