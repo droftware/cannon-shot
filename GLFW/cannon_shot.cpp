@@ -74,7 +74,7 @@ public:
   ~Rectangle();
   VAO* getVAO();
   int getTopLeftX();
-  int getTopRightY();
+  int getTopLeftY();
   int getWidth();
   int getHeight();
   float getAngle();
@@ -102,18 +102,26 @@ private:
 
 class Item{
 public:
-  Item(float mass, float x, float y, float ux, float uy);
+  Item(float mass, float x, float y, float ux, float uy, float radius);
   virtual void applyForces(float timeInstance);
   void applyGravity();
+  void applyNormalForce();
   void applyAcceleration();
   void applyPosition(float timeInstance);
+  void applyCollisionGround();
+  void applyFriction();
+  bool checkCollisionGround();
+  bool checkStoppage();
+  bool checkCollisionItem(Item& other);
   void setSpeed(float ux, float uy);
   void setPosition(float x, float y);
   void setTime(float time);
   float getPositionX();
   float getPositionY();
 protected:
-  static const float GRAVITY = 45.0f;
+  static const float GRAVITY = 75.0f;
+  static const float BOUNCE_COF = 0.4f;
+  static const float FRICTION_COF = 0.1f;
   float mass;
   float forceX;
   float forceY;
@@ -124,6 +132,9 @@ protected:
   float ax;
   float ay;
   float time;
+  float radius;
+  bool horizontalStop;
+  bool verticalStop;
 };
 
 class Bomb : public Item{
@@ -155,10 +166,37 @@ private:
   Bomb *ammo;
   float bombInitSpeed;
 };
+//Rectangle(GLMatrices *mtx, float* color,int x = 0, 
+//int y = 0, int width = 2, int height = 3, int angle = 0);
+class Block
+{
+public:
+  Block(GLMatrices *mtx, int x, int y, int width, int height);
+  float getPositionY();
+  float getPositionX();
+  float getHeight();
+  float getWidth();
+  void draw();
+private:
+  Rectangle *rect;
+};
+
+class Target:public Item
+{
+public:
+  Target(GLMatrices *mtx, Block* pillar);
+  void applyForces(float timeInstance);
+  void draw();
+private:
+  Circle *circ;
+  Block *pillar;
+};
 
 Circle *c;
 Rectangle *r;
 Cannon *can;
+Block *b1;
+Target *t1;
 
 /* Function to load Shaders - Use it as it is */
 GLuint LoadShaders(const char * vertex_file_path,const char * fragment_file_path) {
@@ -539,7 +577,7 @@ int Rectangle::getTopLeftX(){
   return x;
 }
 
-int Rectangle::getTopRightY(){
+int Rectangle::getTopLeftY(){
   return y;
 }
 
@@ -701,13 +739,13 @@ void Cannon::applyForces(float timeInstance){
 }
 
 Bomb::Bomb(GLMatrices *mtx, float cx, float cy, float speedX, float speedY)
-  : Item(5.0f, cx, cy, speedX, speedY)
+  : Item(5.0f, cx, cy, speedX, speedY, 2.0f)
 {
   float *colorCirc = new float[3];
   colorCirc[0] = 1;
   colorCirc[1] = 0;
   colorCirc[2] = 0;
-  this->circ = new Circle(mtx, colorCirc, cx, cy, 2.0f, 50);
+  this->circ = new Circle(mtx, colorCirc, cx, cy, radius, 50);
   this->dynamic = false;
   delete[] colorCirc;
 }
@@ -735,7 +773,7 @@ void Bomb::applyForces(float timeInstance){
     float yrp = y - this->circ->getRadius();
     float xrp = x - this->circ->getRadius();
 
-    if(yrp > TOP_BOUND || yrp < BOTTOM_BOUND || xrp > RIGHT_BOUND || xrp < LEFT_BOUND)
+    if(xrp > RIGHT_BOUND || xrp < LEFT_BOUND || this->checkStoppage())
     {
       this->setDynamic(false);
     }
@@ -745,33 +783,98 @@ void Bomb::applyForces(float timeInstance){
 
 void Bomb::setDynamic(bool value){
   this->dynamic = value;
+  this->horizontalStop = !value;
+  this->verticalStop = !value;
 }
 
 bool Bomb::getDynamic(){
   return this->dynamic;
 }
 
-Item::Item(float mass, float x, float y, float ux, float uy){
+Item::Item(float mass, float x, float y, float ux, float uy, float radius){
   this->mass = mass;
   this->x = x;
   this->y = y;
   this->ux = ux;
   this->uy = uy;
+  this->radius = radius;
   this->forceX = 0.0f;
   this->forceY = 0.0f;
   this->ax = 0.0f;
   this->ay = 0.0f;
   this->time = 0.0f;
+  this->horizontalStop = false;
+  this->verticalStop = false;
 }
+
+
 void Item::applyForces(float timeInstance){
   this->forceX = 0.0f;
   this->forceY = 0.0f;
   applyGravity();
+  //applyNormalForce();
+  applyFriction();
+  applyCollisionGround();
   applyAcceleration();
   applyPosition(timeInstance);
 }
 void Item::applyGravity(){
   this->forceY -= this->mass * GRAVITY;
+}
+
+bool Item::checkCollisionGround(){
+  return (y - BOTTOM_BOUND <= radius);
+}
+
+void Item::applyNormalForce(){
+  if(checkCollisionGround()){
+    this->forceY += this->mass * GRAVITY;
+  }
+}
+
+void Item::applyFriction(){
+  if(checkCollisionGround()){
+    float direction;
+    if(ux > 0){
+      direction = -1.0f;
+    }
+    else direction = 1.0f;
+    this->forceX += direction * this->mass * GRAVITY  * FRICTION_COF;
+    if(ux < 1.0f)
+      horizontalStop = true;
+  }
+}
+
+bool Item::checkCollisionItem(Item &other){
+  float x12 = x - other.x;
+  float y12 = y - other.y;
+  float dist = x12*x12 + y12*y12;
+  float r12 = radius + other.radius;
+  r12 = r12 * r12;
+  if(dist <= r12)
+    return true;
+  else
+    return false;
+  cout<<"*******COLLISION HAPPENED***********"<<endl;
+}
+
+void Item::applyCollisionGround(){
+  if(checkCollisionGround()){
+    //cout<<"Speed on collision uy = "<<uy<<endl;
+    if(uy < -20.5f){
+      uy = -1.0f * uy * BOUNCE_COF;
+      //cout<<"Speed y here = "<<uy<<endl;
+      y += radius + 0.01f; 
+      //cout<<"y here = "<<y<<endl;
+    }
+    else{
+      //cout<<"BAD LUCK"<<endl;
+      uy = 0.0f;
+      y = BOTTOM_BOUND + radius;
+      verticalStop = true;
+    }
+
+  }
 }
 
 void Item::setTime(float time){
@@ -789,6 +892,8 @@ void Item::applyPosition(float timeInstance){
   y = y + uy * timeInstance + (0.5 * ay * timeInstance * timeInstance);
   ux = ux + ax * timeInstance;
   uy = uy + ay * timeInstance;
+  //cout<<"applyPosition speed Y -> "<<uy;
+  //cout<<" applyPosition Y -> "<<y<<endl;
 }
 
 float Item::getPositionX(){
@@ -797,6 +902,12 @@ float Item::getPositionX(){
 
 float Item::getPositionY(){
   return y;
+}
+
+bool Item::checkStoppage(){
+  if(horizontalStop && verticalStop)
+    return true;
+  else return false;
 }
 
 void Item::setPosition(float x, float y){
@@ -808,6 +919,52 @@ void Item::setSpeed(float ux, float uy){
   this->ux = ux;
   this->uy = uy;
 }
+
+Block::Block(GLMatrices *mtx, int x, int y, int width, int height){
+  float *colorBlock = new float[3];
+  colorBlock[0] = 0.6;
+  colorBlock[1] = 0.298;
+  colorBlock[2] = 0.0f;
+  rect = new Rectangle(mtx,colorBlock,x, y, width, height, 0);
+}
+
+void Block::draw(){
+  rect->draw();
+}
+
+float Block::getPositionY(){
+  return rect->getTopLeftY();
+}
+float Block::getPositionX(){
+  return rect->getTopLeftX();
+}
+float Block::getHeight(){
+  return rect->getHeight();
+}
+float Block::getWidth(){
+  return rect->getWidth();
+}
+
+Target::Target(GLMatrices *mtx, Block* pillar)
+  :Item(3.0f, pillar->getPositionX(), pillar->getPositionY() + pillar->getHeight()/2.0f + 2.5f, 0.0f, 0.0f, 2.5f)
+{
+  float *colorTarget = new float[3];
+  colorTarget[0] = 0.4f;
+  colorTarget[1] = 0.0f;
+  colorTarget[2] = 0.4f;
+  float ty = pillar->getPositionY() + pillar->getHeight()/2.0f + radius;
+  circ = new Circle(mtx, colorTarget, getPositionX(), ty, radius, 100);
+  this->pillar = pillar;
+}
+
+void Target::applyForces(float timeInstance){
+  // has to be implemented
+}
+
+void Target::draw(){
+  circ->draw();
+}
+
 
 
 float triangle_rot_dir = 1;
@@ -944,6 +1101,8 @@ void draw()
   //r->draw();
   //c->draw();
   can->draw();
+  b1->draw();
+  t1->draw();
 
 }
 
@@ -1005,6 +1164,8 @@ void initGL (GLFWwindow* window, int width, int height)
   //c = new Circle(&Matrices);
   //r = new Rectangle(&Matrices);
   can = new Cannon(&Matrices);
+  b1 = new Block(&Matrices, -2, BOTTOM_BOUND + 6, 5, 12);
+  t1 = new Target(&Matrices, b1);
 	//createTriangle (); // Generate the VAO, VBOs, vertices data & copy into the array buffer
 	//createRectangle ();
 	
