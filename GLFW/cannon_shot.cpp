@@ -13,10 +13,11 @@
 
 using namespace std;
 
-const float LEFT_BOUND = -52.0f;
-const float RIGHT_BOUND = 52.0f;
-const float TOP_BOUND = 24.0f;
-const float BOTTOM_BOUND = -24.0f;
+float LEFT_BOUND = -52.0f;
+float RIGHT_BOUND = 52.0f;
+float TOP_BOUND = 24.0f;
+float BOTTOM_BOUND = -24.0f;
+float ZOOM_FACTOR = 0.5f;
 
 
 struct VAO {
@@ -40,7 +41,7 @@ typedef struct GLMatrices GLMatrices;
 
 GLMatrices Matrices;
 GLuint programID;
-
+void handleCollisionsBlock();
 
 class Circle{
 public:
@@ -100,6 +101,7 @@ private:
   float angle;
   glm::vec3 axis;
 };
+class Block;
 
 class Item{
 public:
@@ -122,10 +124,15 @@ public:
   friend bool checkCollisionItem(Item &first, Item &second);
   friend void simulateCollisionItem(Item &first, Item &second);
   friend void handleCollisionsItem();
+  
+  friend bool checkCollisionBlock(Item& ball, Block& obs);
+  friend void simulateCollisionBlock(Item& ball, Block &obs);
+  friend void handleCollisionsBlock();
 protected:
   static const float GRAVITY = 75.0f;
   static const float BOUNCE_COF = 0.4f;
   static const float FRICTION_COF = 0.1f;
+  static const float OBS_BOUNCE_COF = 0.6f;
   float mass;
   float forceX;
   float forceY;
@@ -155,13 +162,15 @@ private:
 
 class Cannon{
 public:
-  Cannon(GLMatrices *mtx, int x = -48, int y = -21);
+  Cannon(GLMatrices *mtx, int x = LEFT_BOUND + 4, int y = BOTTOM_BOUND + 3);
   ~Cannon();
 
   void barrelUp();
   void barrelDown();
   void shoot();
   void draw();
+  void increaseSpeed();
+  void decreaseSpeed();
   void applyForces(float timeInstance);
 private:
   Circle *tank;
@@ -181,6 +190,9 @@ public:
   float getHeight();
   float getWidth();
   void draw();
+  friend bool checkCollisionBlock(Item& ball, Block& obs);
+  friend void simulateCollisionBlock(Item& ball, Block &obs);
+  friend void handleCollisionsBlock();
 private:
   Rectangle *rect;
 };
@@ -203,6 +215,7 @@ Cannon *can;
 Block *b1;
 Target *t1;
 std::vector<Item*> movableList;
+std::vector<Block*> obstacleList;
 void handleCollisionsItem();
 
 /* Function to load Shaders - Use it as it is */
@@ -705,6 +718,17 @@ void Cannon::barrelUp(){
   barrel->setAngle(currentAngle);
 }
 
+void Cannon::increaseSpeed(){
+  bombInitSpeed += 10.0f;
+  cout<<"Bomb speed increased ->"<<bombInitSpeed<<endl;
+}
+
+void Cannon::decreaseSpeed(){
+  bombInitSpeed -= 10.0f;
+  cout<<"Bomb speed decreased ->"<<bombInitSpeed<<endl;
+}
+
+
 void Cannon::barrelDown(){
   int currentAngle = barrel->getAngle();
   currentAngle -= 2;
@@ -724,7 +748,8 @@ void Cannon::shoot(){
     float cx = tank->getCenterX() + xAdd;
     float cy = tank->getCenterY() + yAdd;
     //cout<<"Final bomb position X - "<<cx<<endl;
-    //cout<<"Final bomb position Y - "<<cy<<endl;  
+    //cout<<"Final bomb position Y - "<<cy<<endl; 
+    cout<<"Bomb fired with speed ->"<<bombInitSpeed<<endl;
     float ux = bombInitSpeed*cosf(radAngle);
     float uy = bombInitSpeed*sinf(radAngle); 
     //cout<<"Bomb speed X "<<ux<<endl; 
@@ -818,6 +843,7 @@ void Item::applyForces(float timeInstance){
   //applyNormalForce();
   applyOtherForces();
   handleCollisionsItem();
+  handleCollisionsBlock();
   applyFriction();
   applyCollisionGround();
   applyAcceleration();
@@ -904,8 +930,11 @@ bool Item::checkStoppage(){
   float ty = y - prevY;
   if(tx < 0.0f)tx *= -1.0f;
   if(ty < 0.0f)ty *= -1.0f;
-  if(tx < 0.1f && ty < 0.1f)
-    return true;
+  if(tx < 0.01f && ty < 0.01f)
+    {
+      cout<<"returned TRUE"<<endl;
+      return true;
+    }
   else return false;
 }
 
@@ -975,10 +1004,37 @@ void Target::applyOtherForces(){
     this->forceY += this->mass * GRAVITY;
 }
 
+float camera_position = 0.0f;
+
 float triangle_rot_dir = 1;
 float rectangle_rot_dir = 1;
 bool triangle_rot_status = true;
 bool rectangle_rot_status = true;
+
+void panCameraLeft(){
+  camera_position += 0.5f;
+}
+
+void panCameraRight(){
+  camera_position -= 0.5f;
+}
+
+void zoomIn(){
+  LEFT_BOUND -= ZOOM_FACTOR;
+  RIGHT_BOUND -= ZOOM_FACTOR;
+  TOP_BOUND -= ZOOM_FACTOR;
+  BOTTOM_BOUND -= ZOOM_FACTOR;
+  Matrices.projection = glm::ortho(LEFT_BOUND, RIGHT_BOUND, BOTTOM_BOUND, TOP_BOUND, 0.1f, 500.0f);
+}
+
+void zoomOut(){
+  LEFT_BOUND += ZOOM_FACTOR;
+  RIGHT_BOUND += ZOOM_FACTOR;
+  TOP_BOUND += ZOOM_FACTOR;
+  BOTTOM_BOUND += ZOOM_FACTOR;
+  Matrices.projection = glm::ortho(LEFT_BOUND, RIGHT_BOUND, BOTTOM_BOUND, TOP_BOUND, 0.1f, 500.0f);
+}
+
 
 bool checkCollisionItem(Item &first, Item &second){
   float x12 = first.x - second.x;
@@ -1048,6 +1104,42 @@ void handleCollisionsItem(){
 
 }
 
+bool checkCollisionBlock(Item& ball, Block& obs)
+{
+  float obsLeftBound = obs.rect->getTopLeftX() - obs.rect->getWidth()/2.0f - ball.radius;
+  float obsRightBound = obs.rect->getTopLeftX() + obs.rect->getWidth()/2.0f + ball.radius;
+  float obsTopBound = obs.rect->getTopLeftY() + obs.rect->getHeight()/2.0f + ball.radius;
+  if(ball.x > obsLeftBound && ball.x < obsRightBound && ball.y < obsTopBound ){
+    return true;
+  }
+  else return false;
+}
+
+void simulateCollisionBlock(Item& ball, Block &obs){
+  float obsLeftBound = obs.rect->getTopLeftX() - obs.rect->getWidth()/2.0f - ball.radius;
+  float obsRightBound = obs.rect->getTopLeftX() + obs.rect->getWidth()/2.0f + ball.radius;
+  float obsTopBound = obs.rect->getTopLeftY() + obs.rect->getHeight()/2.0f + ball.radius;
+  float obsTop = obs.rect->getTopLeftY() + obs.rect->getHeight()/2.0f;
+  if(ball.y < obsTop){
+    ball.ux = -1.0f * Item::OBS_BOUNCE_COF * ball.ux;
+    if(ball.x < obs.rect->getTopLeftX())
+      ball.x = obsLeftBound - 1.0f;
+    else
+      ball.x = obsRightBound + 1.0f;
+
+  }
+  else ball.uy = -1.0f * Item::OBS_BOUNCE_COF * ball.uy;
+}
+
+void handleCollisionsBlock(){
+  for(int i = 0; i < movableList.size(); i++){
+    for(int j = 0; j < obstacleList.size(); j++){
+      if(checkCollisionBlock(*movableList[i], *obstacleList[j]))
+        simulateCollisionBlock(*movableList[i], *obstacleList[j]);
+    }
+  }
+}
+
 /* Executed when a regular key is pressed/released/held-down */
 /* Prefered for Keyboard events */
 void keyboard (GLFWwindow* window, int key, int scancode, int action, int mods)
@@ -1077,6 +1169,24 @@ void keyboard (GLFWwindow* window, int key, int scancode, int action, int mods)
                 break;
             case GLFW_KEY_B:
                 can->barrelDown();
+                break;
+            case GLFW_KEY_F:
+                can->increaseSpeed();
+                break;
+            case GLFW_KEY_S:
+                can->decreaseSpeed();
+                break;
+            case GLFW_KEY_LEFT:
+                panCameraLeft();
+                break;
+            case GLFW_KEY_RIGHT:
+                panCameraRight();
+                break;
+            case GLFW_KEY_UP:
+                zoomIn();
+                break;
+            case GLFW_KEY_DOWN:
+                zoomOut();
                 break;
             case GLFW_KEY_SPACE:
                 can->shoot();
@@ -1158,11 +1268,10 @@ void draw()
   // use the loaded shader program
   // Don't change unless you know what you are doing
   glUseProgram (programID);
-
   // Compute Camera matrix (view)
   // Matrices.view = glm::lookAt( eye, target, up ); // Rotating Camera for 3D
   //  Don't change unless you are sure!!
-  Matrices.view = glm::lookAt(glm::vec3(0,0,3), glm::vec3(0,0,0), glm::vec3(0,1,0)); // Fixed camera for 2D (ortho) in XY plane
+  Matrices.view = glm::lookAt(glm::vec3(camera_position,0,3), glm::vec3(camera_position,0,0), glm::vec3(0,1,0)); // Fixed camera for 2D (ortho) in XY plane
 
   // Compute ViewProject matrix as view/camera might not be changed for this frame (basic scenario)
   //  Don't change unless you are sure!!
@@ -1243,6 +1352,7 @@ void initGL (GLFWwindow* window, int width, int height)
   b1 = new Block(&Matrices, -2, BOTTOM_BOUND + 6, 5, 12);
   t1 = new Target(&Matrices, b1);
   movableList.push_back(t1);
+  obstacleList.push_back(b1);
 	//createTriangle (); // Generate the VAO, VBOs, vertices data & copy into the array buffer
 	//createRectangle ();
 	
