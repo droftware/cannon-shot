@@ -13,10 +13,10 @@
 
 using namespace std;
 
-float LEFT_BOUND = -52.0f;
-float RIGHT_BOUND = 52.0f;
-float TOP_BOUND = 24.0f;
-float BOTTOM_BOUND = -24.0f;
+float LEFT_BOUND = -72.0f;
+float RIGHT_BOUND = 72.0f;
+float TOP_BOUND = 34.0f;
+float BOTTOM_BOUND = -34.0f;
 float ZOOM_FACTOR = 0.5f;
 
 
@@ -71,21 +71,21 @@ private:
 
 class Rectangle{
 public:
-  Rectangle(GLMatrices *mtx, float* color,int x = 0, int y = 0, int width = 2, int height = 3, int angle = 0);
+  Rectangle(GLMatrices *mtx, float* color,float x = 0.0f, float y = 0.0f, float width = 2.0f, float height = 3.0f, float angle = 0.0f);
   Rectangle(const Rectangle& rect);
   ~Rectangle();
   VAO* getVAO();
-  int getTopLeftX();
-  int getTopLeftY();
-  int getWidth();
-  int getHeight();
+  float getTopLeftX();
+  float getTopLeftY();
+  float getWidth();
+  float getHeight();
   float getAngle();
   float getPosAngle();
   glm::vec3 getAxis();
-  void setTopLeftX(int x);
-  void setTopLeftY(int y);
-  void setWidth(int w);
-  void setHeight(int h);
+  void setTopLeftX(float x);
+  void setTopLeftY(float y);
+  void setWidth(float w);
+  void setHeight(float h);
   void setAngle(float angle);
   void setAxis(glm::vec3 &axis);
   virtual void draw();
@@ -94,10 +94,10 @@ private:
   GLfloat *color_buffer_data;
   GLMatrices *mtx;
   VAO *vaobj;
-  int x;
-  int y;
-  int width;
-  int height;
+  float x;
+  float y;
+  float width;
+  float height;
   float angle;
   glm::vec3 axis;
 };
@@ -121,18 +121,23 @@ public:
   void setTime(float time);
   float getPositionX();
   float getPositionY();
-  friend bool checkCollisionItem(Item &first, Item &second);
+  friend bool checkCollisionItem(Item &first, Item &second, bool& flag);
   friend void simulateCollisionItem(Item &first, Item &second);
   friend void handleCollisionsItem();
   
   friend bool checkCollisionBlock(Item& ball, Block& obs);
   friend void simulateCollisionBlock(Item& ball, Block &obs);
   friend void handleCollisionsBlock();
+
+  friend bool checkCollisionWall(Item& ball);
+  friend void simulateCollisionWall(Item& ball);
+  friend void handleCollisionsWall(Item& ball);
 protected:
   static const float GRAVITY = 75.0f;
   static const float BOUNCE_COF = 0.4f;
   static const float FRICTION_COF = 0.1f;
   static const float OBS_BOUNCE_COF = 0.6f;
+  static const float WALL_BOUNCE_COF = 0.2f;
   float mass;
   float forceX;
   float forceY;
@@ -184,17 +189,27 @@ private:
 class Block
 {
 public:
-  Block(GLMatrices *mtx, int x, int y, int width, int height);
+  Block(GLMatrices *mtx, int x, int y, int width, int height, bool dynamic = false);
   float getPositionY();
   float getPositionX();
   float getHeight();
   float getWidth();
   void draw();
+  void applyForces(float timeInstance);
+  bool isDynamic();
+  float getSpeed();
+  float getLeftBound();
+  float getRightBound();
   friend bool checkCollisionBlock(Item& ball, Block& obs);
   friend void simulateCollisionBlock(Item& ball, Block &obs);
   friend void handleCollisionsBlock();
 private:
   Rectangle *rect;
+  float leftBound;
+  float rightBound;
+  float speed;
+  float time;
+  bool dynamic;
 };
 
 class Target:public Item
@@ -204,6 +219,7 @@ public:
   void draw();
   void applyOtherForces();
   void applyForces(float timeInstance);
+  bool isInContact();
 private:
   Circle *circ;
   Block *pillar;
@@ -214,6 +230,10 @@ Rectangle *r;
 Cannon *can;
 Block *b1;
 Target *t1;
+Block *b2;
+Target *t2;
+Block *b3;
+Target *t3;
 std::vector<Item*> movableList;
 std::vector<Block*> obstacleList;
 void handleCollisionsItem();
@@ -525,7 +545,7 @@ Circle::~Circle(){
   delete[] color_buffer_data;
 }
 
-Rectangle::Rectangle(GLMatrices *mtx, float* color,int x, int y, int width, int height, int angle)
+Rectangle::Rectangle(GLMatrices *mtx, float* color,float x, float y, float width, float height, float angle)
 {
   vertex_buffer_data = new GLfloat[20];
   color_buffer_data = new GLfloat[20];
@@ -593,19 +613,19 @@ VAO* Rectangle::getVAO(){
   return this->vaobj;
 }
 
-int Rectangle::getTopLeftX(){
+float Rectangle::getTopLeftX(){
   return x;
 }
 
-int Rectangle::getTopLeftY(){
+float Rectangle::getTopLeftY(){
   return y;
 }
 
-int Rectangle::getWidth(){
+float Rectangle::getWidth(){
   return width;
 }
 
-int Rectangle::getHeight(){
+float Rectangle::getHeight(){
   return height;
 }
 
@@ -621,19 +641,19 @@ glm::vec3 Rectangle::getAxis(){
   return axis;
 }
 
-void Rectangle::setTopLeftX(int x){
+void Rectangle::setTopLeftX(float x){
   this->x = x;
 }
 
-void Rectangle::setTopLeftY(int y){
+void Rectangle::setTopLeftY(float y){
   this->y = y;
 }
 
-void Rectangle::setWidth(int w){
+void Rectangle::setWidth(float w){
   this->width = w;
 }
 
-void Rectangle::setHeight(int h){
+void Rectangle::setHeight(float h){
   this->height = h;
 }
 
@@ -683,7 +703,7 @@ Cannon::Cannon(GLMatrices *mtx, int x, int y){
   colorBarrel[0] = 0;
   colorBarrel[1] = 0;
   colorBarrel[2] = 1;
-  barrel = new Rectangle(mtx,colorBarrel,x, y, 4, 16, -70);
+  barrel = new Rectangle(mtx,colorBarrel,x, y, 4.0f, 16.0f, -70.0f);
   glm::vec3 mtemp = glm::vec3(0, 0, 1);
   barrel->setAxis(mtemp);
   float radAngle = barrel->getPosAngle() * M_PI/180.0f;
@@ -842,8 +862,6 @@ void Item::applyForces(float timeInstance){
   applyGravity();
   //applyNormalForce();
   applyOtherForces();
-  handleCollisionsItem();
-  handleCollisionsBlock();
   applyFriction();
   applyCollisionGround();
   applyAcceleration();
@@ -948,12 +966,26 @@ void Item::setSpeed(float ux, float uy){
   this->uy = uy;
 }
 
-Block::Block(GLMatrices *mtx, int x, int y, int width, int height){
+Block::Block(GLMatrices *mtx, int x, int y, int width, int height, bool dynamic){
   float *colorBlock = new float[3];
   colorBlock[0] = 0.6;
   colorBlock[1] = 0.298;
   colorBlock[2] = 0.0f;
   rect = new Rectangle(mtx,colorBlock,x, y, width, height, 0);
+  this->dynamic = dynamic;
+  this->time = 0.0f;
+  if(dynamic){
+  	cout<<" Is dynamic "<<endl;
+  	this->leftBound = x - 10.0f;
+  	this->rightBound = x + 10.0f;
+  	this->speed = 5.0f;
+  	cout<<"left bound -> "<<leftBound<<" Right Bound -> "<<rightBound<<endl;
+  }
+  else{
+  	this->leftBound = x;
+  	this->rightBound = x;
+  	this->speed = 0.0f;
+  }
 }
 
 void Block::draw(){
@@ -973,8 +1005,38 @@ float Block::getWidth(){
   return rect->getWidth();
 }
 
+void Block::applyForces(float timeInstance){
+	float tx;
+	if(dynamic){
+		time += timeInstance;
+		tx = getPositionX();
+		tx += speed* timeInstance;
+		rect->setTopLeftX(tx);
+		if(tx < leftBound || tx > rightBound){
+			speed *= -1.0f;
+		}
+		cout<<"Force applied, tx = "<<tx<<endl;
+	}
+}
+
+bool Block::isDynamic(){
+	return dynamic;
+}
+
+float Block::getSpeed(){
+	return speed;
+}
+
+float Block::getLeftBound(){
+	return leftBound;
+}
+
+float Block::getRightBound(){
+	return rightBound;
+}
+
 Target::Target(GLMatrices *mtx, Block* pillar)
-  :Item(3.0f, pillar->getPositionX(), pillar->getPositionY() + pillar->getHeight()/2.0f + 2.5f, 0.0f, 0.0f, 2.5f)
+  :Item(3.0f, pillar->getPositionX(), pillar->getPositionY() + pillar->getHeight()/2.0f + 2.5f, pillar->getSpeed(), 0.0f, 2.5f)
 {
   float *colorTarget = new float[3];
   colorTarget[0] = 0.4f;
@@ -993,15 +1055,27 @@ void Target::applyForces(float timeInstance){
   Item::applyForces(timeInstance);
   float tx = getPositionX();
   float ty = getPositionY();
+  if(pillar->isDynamic() && isInContact()){
+  	if(tx < pillar->getLeftBound() || tx > pillar->getRightBound()){
+  			this->ux *= -1.0f;
+  		}
+  	}
   circ->setCenter(tx,ty);
 }
 
-void Target::applyOtherForces(){
+bool Target::isInContact(){
   float lb = pillar->getPositionX() - pillar->getWidth()/2.0f;
   float rb = pillar->getPositionX() + pillar->getWidth()/2.0f;
   float ub = pillar->getPositionY() + pillar->getHeight()/2.0f + circ->getRadius() + 1.0f;
   if(this->x >= lb && this->x <=rb && this->y <= ub)
-    this->forceY += this->mass * GRAVITY;
+  	return true;
+  else return false;
+}
+
+void Target::applyOtherForces(){
+  if(isInContact()){
+    	this->forceY += this->mass * GRAVITY;
+	}
 }
 
 float camera_position = 0.0f;
@@ -1036,15 +1110,16 @@ void zoomOut(){
 }
 
 
-bool checkCollisionItem(Item &first, Item &second){
+bool checkCollisionItem(Item &first, Item &second, bool &flag){
   float x12 = first.x - second.x;
   float y12 = first.y - second.y;
-  float dist = x12*x12 + y12*y12;
+  float dist = x12*x12 + y12*y12 - 5.0f;
   float r12 = first.radius + second.radius;
   r12 = r12 * r12;
-  if(dist <= r12)
+  if(dist <= r12 && flag)
     {
       cout<<"*******COLLISION HAPPENED***********"<<endl;
+      flag = false;
       return true;
     }
   else
@@ -1091,13 +1166,22 @@ void simulateCollisionItem(Item &first, Item &second){
 
   second.ux += secondChange * unitX;
   second.uy += secondChange * unitY;
+
+  cout<<" Change First Ux = "<< firstChange * unitX<<endl;
+  cout<<" Change First Uy = "<< firstChange * unitY<<endl;
+
+  cout<<" Change Second Ux = "<< secondChange * unitX<<endl;
+  cout<<" Change Second Uy = "<< secondChange * unitY<<endl;
+
 }
 
 void handleCollisionsItem(){
   //cout<<"Movable list size "<<movableList.size()<<endl;
+  bool flag = true;
   for(int i = 0; i < movableList.size(); i++){
     for(int j = i + 1; j < movableList.size(); j++){
-      if(checkCollisionItem(*movableList[i], *movableList[j]))
+      flag = true;
+      if(checkCollisionItem(*movableList[i], *movableList[j], flag))
         simulateCollisionItem(*movableList[i], *movableList[j]);
     }
   }
@@ -1109,7 +1193,8 @@ bool checkCollisionBlock(Item& ball, Block& obs)
   float obsLeftBound = obs.rect->getTopLeftX() - obs.rect->getWidth()/2.0f - ball.radius;
   float obsRightBound = obs.rect->getTopLeftX() + obs.rect->getWidth()/2.0f + ball.radius;
   float obsTopBound = obs.rect->getTopLeftY() + obs.rect->getHeight()/2.0f + ball.radius;
-  if(ball.x > obsLeftBound && ball.x < obsRightBound && ball.y < obsTopBound ){
+  float obsBottomBound = obs.rect->getTopLeftY() - obs.rect->getHeight()/2.0f - ball.radius;
+  if(ball.x > obsLeftBound && ball.x < obsRightBound && ball.y < obsTopBound && ball.y > obsBottomBound){
     return true;
   }
   else return false;
@@ -1120,7 +1205,8 @@ void simulateCollisionBlock(Item& ball, Block &obs){
   float obsRightBound = obs.rect->getTopLeftX() + obs.rect->getWidth()/2.0f + ball.radius;
   float obsTopBound = obs.rect->getTopLeftY() + obs.rect->getHeight()/2.0f + ball.radius;
   float obsTop = obs.rect->getTopLeftY() + obs.rect->getHeight()/2.0f;
-  if(ball.y < obsTop){
+  float obsBottom = obs.rect->getTopLeftY() - obs.rect->getHeight()/2.0f;
+  if(ball.y < obsTop && ball.y > obsBottom){
     ball.ux = -1.0f * Item::OBS_BOUNCE_COF * ball.ux;
     if(ball.x < obs.rect->getTopLeftX())
       ball.x = obsLeftBound - 1.0f;
@@ -1138,6 +1224,41 @@ void handleCollisionsBlock(){
         simulateCollisionBlock(*movableList[i], *obstacleList[j]);
     }
   }
+}
+
+bool checkCollisionWall(Item& ball){
+	float ballRightSide = ball.x + ball.radius;
+	float ballLeftSide = ball.x - ball.radius;
+	float ballTopSide = ball.y + ball.radius;
+	if(ballRightSide > RIGHT_BOUND || ballLeftSide < LEFT_BOUND || ballTopSide > TOP_BOUND){
+		return true;
+	}
+	else return false;
+}
+
+void simulateCollisionWall(Item& ball){
+	float ballRightSide = ball.x + ball.radius;
+	float ballLeftSide = ball.x - ball.radius;
+	float ballTopSide = ball.y + ball.radius;
+	if(ballRightSide > RIGHT_BOUND || ballLeftSide < LEFT_BOUND){
+		ball.ux = -1.0f * Item::WALL_BOUNCE_COF * ball.ux;
+		if(ballRightSide > RIGHT_BOUND)
+			ball.x -= (ball.radius + 0.01f);
+		if(ballLeftSide < LEFT_BOUND)
+			ball.x += (ball.radius + 0.01f);
+	}
+	if(ballTopSide > TOP_BOUND){
+		ball.uy = -1.0f * Item::WALL_BOUNCE_COF * ball.uy;
+		ball.y -= (ball.radius + 0.01f);
+	}
+}
+
+void handleCollisionsWall(){
+	for(int i = 0; i < movableList.size(); i++){
+		if(checkCollisionWall(*movableList[i])){
+			simulateCollisionWall(*movableList[i]);
+		}
+	}
 }
 
 /* Executed when a regular key is pressed/released/held-down */
@@ -1286,8 +1407,15 @@ void draw()
   //r->draw();
   //c->draw();
   can->draw();
+
   b1->draw();
   t1->draw();
+
+  b2->draw();
+  t2->draw();
+
+  b3->draw();
+  t3->draw();
 
 }
 
@@ -1351,8 +1479,18 @@ void initGL (GLFWwindow* window, int width, int height)
   can = new Cannon(&Matrices);
   b1 = new Block(&Matrices, -2, BOTTOM_BOUND + 6, 5, 12);
   t1 = new Target(&Matrices, b1);
+
+  b2 = new Block(&Matrices, -2, 6, 5, 12, true);
+  t2 = new Target(&Matrices, b2);
+
+  b3 = new Block(&Matrices, 30, 0, 5, 12);
+  t3 = new Target(&Matrices, b3);
   movableList.push_back(t1);
   obstacleList.push_back(b1);
+  movableList.push_back(t2);
+  obstacleList.push_back(b2);
+  movableList.push_back(t3);
+  obstacleList.push_back(b3);
 	//createTriangle (); // Generate the VAO, VBOs, vertices data & copy into the array buffer
 	//createRectangle ();
 	
@@ -1406,7 +1544,15 @@ int main (int argc, char** argv)
             // do something every 0.5 seconds ..
             last_update_time = current_time;
             can->applyForces(0.01f);
+            b1->applyForces(0.01f);
+            b2->applyForces(0.01f);
+            b3->applyForces(0.01f);
             t1->applyForces(0.01f);
+            t2->applyForces(0.01f);
+            t3->applyForces(0.01f);
+            handleCollisionsItem();
+ 			handleCollisionsBlock();
+ 			handleCollisionsWall();
         }
     }
 
