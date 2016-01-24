@@ -56,6 +56,7 @@ GLint fontVertexCoordAttrib, fontVertexNormalAttrib, fontVertexOffsetUniform;
 class FTGLFont{
 public:
 	FTGLFont(GLMatrices *mtx, float* color, char* fontfile, char *word, float size, float x, float y, float scaleFactor);
+	~FTGLFont();
 	void draw();
 	void setWord(char* word);
 private:
@@ -273,6 +274,10 @@ Block *b2;
 Target *t2;
 Block *b3;
 Target *t3;
+Block *b4;
+Target *t4;
+//Block *b5;
+//Target *t5;
 FTGLFont *f1;
 FTGLFont *f2;
 FTGLFont *f3;
@@ -1410,6 +1415,19 @@ void simulateCollisionItem(Item &first, Item &second){
   second.ux += secondChange * unitX;
   second.uy += secondChange * unitY;
 
+  float magFirstChangeX = (firstChange * unitX) > 0.0f ? (firstChange * unitX) : (-1.0f * firstChange * unitX);
+  float magFirstChangeY = (firstChange * unitY) > 0.0f ? (firstChange * unitY) : (-1.0f * firstChange * unitY);
+  
+  float magSecondChangeX = (secondChange * unitX) > 0.0f ? (secondChange * unitX) : (-1.0f * secondChange * unitX);
+  float magSecondChangeY = (secondChange * unitY) > 0.0f ? (secondChange * unitY) : (-1.0f * secondChange * unitY);
+
+  if(true){
+  	first.x += (firstChange * unitX)/magFirstChangeX * 1.0f;
+  	first.y += (firstChange * unitY)/magSecondChangeX * 1.0f;
+  	second.x += (secondChange * unitX)/magSecondChangeX * 1.0f;
+  	second.y += (secondChange * unitY)/magSecondChangeY * 1.0f;
+  }
+
   //cout<<" Change First Ux = "<< firstChange * unitX<<endl;
   //cout<<" Change First Uy = "<< firstChange * unitY<<endl;
 
@@ -1733,7 +1751,13 @@ void draw()
 	  b3->draw();
 	  t3->draw();
 
-	  
+	  b4->draw();
+	  t4->draw();
+
+	  //b5->draw();
+	  //t5->draw();
+
+  
   }
 
   glUseProgram(fontProgramID);
@@ -1831,12 +1855,23 @@ void initGL (GLFWwindow* window, int width, int height)
 
   b3 = new Block(&Matrices, 30, 0, 5, 12);
   t3 = new Target(&Matrices, b3);
+
+  b4 = new Block(&Matrices, -24, BOTTOM_BOUND + 6, 5, 12, true);
+  t4 = new Target(&Matrices, b4);
+
+  //b5 = new Block(&Matrices, 35, BOTTOM_BOUND + 6, 5, 12);
+  //t5 = new Target(&Matrices, b5);
+
   movableList.push_back(t1);
   obstacleList.push_back(b1);
   movableList.push_back(t2);
   obstacleList.push_back(b2);
   movableList.push_back(t3);
   obstacleList.push_back(b3);
+  movableList.push_back(t4);
+  obstacleList.push_back(b4);
+  //movableList.push_back(t5);
+  //obstacleList.push_back(b5);
 	//createTriangle (); // Generate the VAO, VBOs, vertices data & copy into the array buffer
 	//createRectangle ();
 	
@@ -1895,9 +1930,9 @@ void initGL (GLFWwindow* window, int width, int height)
 	fLoose = new FTGLFont(&Matrices, colArrayFont, fileString, looseName, 40.0f, -40.0f, 0.0f, 1.0f);
 	fWin = new FTGLFont(&Matrices, colArrayFont, fileString, winName, 40.0f, -40.0f, 0.0f, 1.0f);
 	f1 = new FTGLFont(&Matrices, colArrayFont, fileString, wordName, 20.0f, -50.0f, TOP_BOUND - 6.0f, 1.0f);
-	f2 = new FTGLFont(&Matrices, colArrayFont, fileString, wordName2, 10.0f, LEFT_BOUND + 1.0f, TOP_BOUND - 10.0f, 1.0f);
-	f3 = new FTGLFont(&Matrices, colArrayFont, fileString, wordName3, 10.0f, LEFT_BOUND + 1.0f, TOP_BOUND - 15.0f, 1.0f);
-	fScore = new FTGLFont(&Matrices, colArrayFont, fileString, wordName4, 10.0f, LEFT_BOUND + 1.0f, TOP_BOUND - 20.0f, 1.0f);
+	f2 = new FTGLFont(&Matrices, colArrayFont, fileString, wordName2, 13.0f, LEFT_BOUND + 1.0f, TOP_BOUND - 10.0f, 1.0f);
+	f3 = new FTGLFont(&Matrices, colArrayFont, fileString, wordName3, 13.0f, LEFT_BOUND + 1.0f, TOP_BOUND - 15.0f, 1.0f);
+	fScore = new FTGLFont(&Matrices, colArrayFont, fileString, wordName4, 13.0f, LEFT_BOUND + 1.0f, TOP_BOUND - 20.0f, 1.0f);
 
     cout << "VENDOR: " << glGetString(GL_VENDOR) << endl;
     cout << "RENDERER: " << glGetString(GL_RENDERER) << endl;
@@ -1952,9 +1987,13 @@ int main (int argc, char** argv)
             b1->applyForces(0.01f);
             b2->applyForces(0.01f);
             b3->applyForces(0.01f);
+            b4->applyForces(0.01f);
+           	//b5->applyForces(0.01f);
             t1->applyForces(0.01f);
             t2->applyForces(0.01f);
             t3->applyForces(0.01f);
+            t4->applyForces(0.01f);
+            //t5->applyForces(0.01f);
             handleCollisionsItem();
  			handleCollisionsBlock();
  			handleCollisionsWall();
