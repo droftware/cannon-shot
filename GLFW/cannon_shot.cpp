@@ -25,6 +25,8 @@ float WINDOW_WIDTH = 1300;
 float WINDOW_HEIGHT = 600;
 
 
+
+
 struct VAO {
 	GLuint VertexArrayID;
 	GLuint VertexBuffer;
@@ -179,6 +181,7 @@ protected:
   float ay;
   float time;
   float radius;
+  bool collisionFlag;
 };
 
 class Bomb : public Item{
@@ -208,12 +211,14 @@ public:
   void applyForces(float timeInstance);
   void setBombInitSpeed(float speed);
   float getBombInitSpeed();
+  int getShotsLeft();
 private:
   Circle *tank;
   Rectangle *barrel;
   GLMatrices *mtx;
   Bomb *ammo;
   float bombInitSpeed;
+  int shotsLeft;
 };
 //Rectangle(GLMatrices *mtx, float* color,int x = 0, 
 //int y = 0, int width = 2, int height = 3, int angle = 0);
@@ -256,6 +261,9 @@ private:
   Block *pillar;
 };
 
+bool gameWin;
+bool gameLoose;
+int gameScore;
 Circle *c;
 Rectangle *r;
 Cannon *can;
@@ -267,6 +275,10 @@ Block *b3;
 Target *t3;
 FTGLFont *f1;
 FTGLFont *f2;
+FTGLFont *f3;
+FTGLFont *fLoose;
+FTGLFont *fWin;
+FTGLFont *fScore;
 std::vector<Item*> movableList;
 std::vector<Block*> obstacleList;
 void handleCollisionsItem();
@@ -843,6 +855,7 @@ Cannon::Cannon(GLMatrices *mtx, int x, int y){
   //int numPolygons =100, float color=0.5);
   //Rectangle(GLMatrices *mtx, int x, int y, 
   //int width, int height, int angle, int color)
+  this->shotsLeft = 10;
   float *colorTank = new float[3];
   colorTank[0] = 0;
   colorTank[1] = 1;
@@ -912,6 +925,11 @@ void Cannon::decreaseSpeed(){
   cout<<"Bomb speed decreased ->"<<bombInitSpeed<<endl;
 }
 
+int Cannon::getShotsLeft(){
+	return shotsLeft;
+
+}
+
 
 void Cannon::barrelDown(){
   int currentAngle = barrel->getAngle();
@@ -942,6 +960,7 @@ void Cannon::shoot(){
     this->ammo->setSpeed(ux, uy);
     this->ammo->setTime(0.0f);
     this->ammo->setDynamic(true);
+    shotsLeft--;
   }
   
 }
@@ -961,6 +980,7 @@ Bomb::Bomb(GLMatrices *mtx, float cx, float cy, float speedX, float speedY)
   colorCirc[2] = 0;
   this->circ = new Circle(mtx, colorCirc, cx, cy, radius, 50);
   this->dynamic = false;
+  this->collisionFlag = true;
   delete[] colorCirc;
 }
 
@@ -1209,6 +1229,7 @@ Target::Target(GLMatrices *mtx, Block* pillar)
   float ty = pillar->getPositionY() + pillar->getHeight()/2.0f + radius;
   circ = new Circle(mtx, colorTarget, getPositionX(), ty, radius, 100);
   this->pillar = pillar;
+  this->collisionFlag = false;
 }
 
 void Target::draw(){
@@ -1403,8 +1424,17 @@ void handleCollisionsItem(){
   for(int i = 0; i < movableList.size(); i++){
     for(int j = i + 1; j < movableList.size(); j++){
       flag = true;
-      if(checkCollisionItem(*movableList[i], *movableList[j], flag))
-        simulateCollisionItem(*movableList[i], *movableList[j]);
+      if(checkCollisionItem(*movableList[i], *movableList[j], flag)){
+      	if(movableList[i]->collisionFlag == false){
+      		movableList[i]->collisionFlag = true;
+      		gameScore++;
+      	}
+      	if(movableList[j]->collisionFlag == false){
+      		movableList[j]->collisionFlag = true;
+      		gameScore++;
+      	}
+      	simulateCollisionItem(*movableList[i], *movableList[j]);
+      }
     }
   }
 
@@ -1691,41 +1721,47 @@ void draw()
   // Load identity to model matrix
   //r->draw();
   //c->draw();
-  can->draw();
+  if(gameLoose == false && gameWin == false){
+  	  can->draw();
 
-  b1->draw();
-  t1->draw();
+	  b1->draw();
+	  t1->draw();
 
-  b2->draw();
-  t2->draw();
+	  b2->draw();
+	  t2->draw();
 
-  b3->draw();
-  t3->draw();
+	  b3->draw();
+	  t3->draw();
 
-  // Render font on screen
-  //static int fontScale = 0;
-  /*float fontScaleValue = 5.0f;
-  glm::vec3 fontColor = glm::vec3(0,0,0);*/
+	  
+  }
 
   glUseProgram(fontProgramID);
-  f1->draw();
-  f2->draw();
-  /*
-  //Matrices.view = glm::lookAt(glm::vec3(0,0,3), glm::vec3(0,0,0), glm::vec3(0,1,0)); // Fixed camera for 2D (ortho) in XY plane
-// Transform the text
-	Matrices.model = glm::mat4(1.0f);
-	glm::mat4 translateText = glm::translate(glm::vec3(-3,2,0));
-	glm::mat4 scaleText = glm::scale(glm::vec3(fontScaleValue,fontScaleValue,fontScaleValue));
-	Matrices.model *= (translateText);
-	MVP = Matrices.projection * Matrices.view * Matrices.model;
-	// send font's MVP and font color to fond shaders
-	glUniformMatrix4fv(GL3Font.fontMatrixID, 1, GL_FALSE, &MVP[0][0]);
-	glUniform3fv(GL3Font.fontColorID, 1, &fontColor[0]); 
+  if(gameLoose == true){
+  	fLoose->draw();
+  	
+  }
+  if(gameWin == true){
+  	fWin->draw();
+  }
+  if(gameLoose == false && gameWin == false){
+  	// Render font on screen
+	  //static int fontScale = 0;
+	  /*float fontScaleValue = 5.0f;
+	  glm::vec3 fontColor = glm::vec3(0,0,0);*/
 
-	// Render font
-	GL3Font.font->Render("Color Bomber");*/
-	
+	  glUseProgram(fontProgramID);
+	  f1->draw();
+	  f2->draw();
+	  f3->draw();
+	  fScore->draw();
+
+  }
+
+	  
+
 }
+  
 
 /* Initialise glfw window, I/O callbacks and the renderer to use */
 /* Nothing to Edit here */
@@ -1839,13 +1875,29 @@ void initGL (GLFWwindow* window, int width, int height)
 	strcpy(fileString, "kimberly.ttf");
 
 	char wordName[50];
-	strcpy(wordName, "The Ball Machine");
+	strcpy(wordName, "The(_)Ball(_)Machine");
 
 	char wordName2[50];
 	strcpy(wordName2, "Speed:");
 
-	f1 = new FTGLFont(&Matrices, colArrayFont, fileString, wordName, 20.0f, -30.0f, TOP_BOUND - 5.0f, 1.0f);
-	f2 = new FTGLFont(&Matrices, colArrayFont, fileString, wordName2, 10.0f, LEFT_BOUND + 10.0f, TOP_BOUND - 10.0f, 1.0f);
+	char wordName3[50];
+	strcpy(wordName3, "Shots:");
+
+	char wordName4[50];
+	strcpy(wordName3, "Score:");
+
+	char looseName[50];
+	strcpy(looseName, "\tYou Loose !!!\t");
+
+	char winName[50];
+	strcpy(winName, "\tYou Win !!!\t");
+
+	fLoose = new FTGLFont(&Matrices, colArrayFont, fileString, looseName, 40.0f, -40.0f, 0.0f, 1.0f);
+	fWin = new FTGLFont(&Matrices, colArrayFont, fileString, winName, 40.0f, -40.0f, 0.0f, 1.0f);
+	f1 = new FTGLFont(&Matrices, colArrayFont, fileString, wordName, 20.0f, -50.0f, TOP_BOUND - 6.0f, 1.0f);
+	f2 = new FTGLFont(&Matrices, colArrayFont, fileString, wordName2, 10.0f, LEFT_BOUND + 1.0f, TOP_BOUND - 10.0f, 1.0f);
+	f3 = new FTGLFont(&Matrices, colArrayFont, fileString, wordName3, 10.0f, LEFT_BOUND + 1.0f, TOP_BOUND - 15.0f, 1.0f);
+	fScore = new FTGLFont(&Matrices, colArrayFont, fileString, wordName4, 10.0f, LEFT_BOUND + 1.0f, TOP_BOUND - 20.0f, 1.0f);
 
     cout << "VENDOR: " << glGetString(GL_VENDOR) << endl;
     cout << "RENDERER: " << glGetString(GL_RENDERER) << endl;
@@ -1857,6 +1909,11 @@ int main (int argc, char** argv)
 {
 	int width = WINDOW_WIDTH;
 	int height = WINDOW_HEIGHT;
+
+	gameWin = false; 
+	gameLoose = false;
+	gameScore = 0;
+	//gameStart
 
     GLFWwindow* window = initGLFW(width, height);
 
@@ -1875,10 +1932,16 @@ int main (int argc, char** argv)
 
         // Poll for Keyboard and mouse events
         glfwPollEvents();
-        int speedB;
+        int tempB;
 		char str[50];
 		char strB[50];
 		strcpy(strB,"Speed:");
+
+		char strC[50];
+		strcpy(strC,"Shots:");
+
+		char strD[50];
+		strcpy(strD,"Score:");
 
         // Control based on time (Time based transformation like 5 degrees rotation every 0.5s)
         current_time = glfwGetTime(); // Time in seconds
@@ -1896,10 +1959,23 @@ int main (int argc, char** argv)
  			handleCollisionsBlock();
  			handleCollisionsWall();
  			checkPan(window);
- 			speedB = (int)can->getBombInitSpeed();
- 			sprintf(str, "%d", speedB);
+ 			tempB = (int)can->getBombInitSpeed();
+ 			sprintf(str, "%d", tempB);
  			strcat(strB,str);
  			f2->setWord(strB);
+ 			tempB = can->getShotsLeft();
+ 			if(tempB == 0){
+ 				gameLoose = true;
+ 			}
+ 			sprintf(str, "%d", tempB);
+ 			strcat(strC,str);
+ 			f3->setWord(strC);
+ 			sprintf(str, "%d", gameScore);
+ 			strcat(strD,str);
+ 			fScore->setWord(strD);
+ 			if(gameScore == movableList.size()-1){
+ 				gameWin = true;
+ 			}
         }
     }
 
