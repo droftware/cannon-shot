@@ -11,6 +11,9 @@
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <FTGL/ftgl.h>
+#include <SOIL/SOIL.h>
+
 using namespace std;
 
 float LEFT_BOUND = -72.0f;
@@ -23,26 +26,49 @@ float WINDOW_HEIGHT = 600;
 
 
 struct VAO {
-    GLuint VertexArrayID;
-    GLuint VertexBuffer;
-    GLuint ColorBuffer;
+	GLuint VertexArrayID;
+	GLuint VertexBuffer;
+	GLuint ColorBuffer;
+	GLuint TextureBuffer;
+	GLuint TextureID;
 
-    GLenum PrimitiveMode;
-    GLenum FillMode;
-    int NumVertices;
+	GLenum PrimitiveMode; // GL_POINTS, GL_LINE_STRIP, GL_LINE_LOOP, GL_LINES, GL_LINE_STRIP_ADJACENCY, GL_LINES_ADJACENCY, GL_TRIANGLE_STRIP, GL_TRIANGLE_FAN, GL_TRIANGLES, GL_TRIANGLE_STRIP_ADJACENCY and GL_TRIANGLES_ADJACENCY
+	GLenum FillMode; // GL_FILL, GL_LINE
+	int NumVertices;
 };
 typedef struct VAO VAO;
 
 struct GLMatrices {
-  glm::mat4 projection;
-  glm::mat4 model;
-  glm::mat4 view;
-  GLuint MatrixID;
+	glm::mat4 projection;
+	glm::mat4 model;
+	glm::mat4 view;
+	GLuint MatrixID; // For use with normal shader
+	GLuint TexMatrixID; // For use with texture shader
 };
 typedef struct GLMatrices GLMatrices;
 
 GLMatrices Matrices;
-GLuint programID;
+GLuint programID, fontProgramID, textureProgramID;
+GLint fontVertexCoordAttrib, fontVertexNormalAttrib, fontVertexOffsetUniform;
+
+class FTGLFont{
+public:
+	FTGLFont(GLMatrices *mtx, float* color, char* fontfile, char *word, float size, float x, float y, float scaleFactor);
+	void draw();
+	void setWord(char* word);
+private:
+	GLMatrices *mtx;
+	FTFont* font;
+	GLuint fontMatrixID;
+	GLuint fontColorID;
+	float scaleFactor;
+	float x;
+	float y;
+  	glm::vec3 fontColor; 
+  	char* fontfile;
+  	char* word;
+};
+
 void handleCollisionsBlock();
 
 class Circle{
@@ -181,6 +207,7 @@ public:
   void decreaseSpeed();
   void applyForces(float timeInstance);
   void setBombInitSpeed(float speed);
+  float getBombInitSpeed();
 private:
   Circle *tank;
   Rectangle *barrel;
@@ -238,6 +265,8 @@ Block *b2;
 Target *t2;
 Block *b3;
 Target *t3;
+FTGLFont *f1;
+FTGLFont *f2;
 std::vector<Item*> movableList;
 std::vector<Block*> obstacleList;
 void handleCollisionsItem();
@@ -329,6 +358,121 @@ void quit(GLFWwindow *window)
     glfwDestroyWindow(window);
     glfwTerminate();
     exit(EXIT_SUCCESS);
+}
+
+glm::vec3 getRGBfromHue (int hue)
+{
+	float intp;
+	float fracp = modff(hue/60.0, &intp);
+	float x = 1.0 - abs((float)((int)intp%2)+fracp-1.0);
+
+	if (hue < 60)
+		return glm::vec3(1,x,0);
+	else if (hue < 120)
+		return glm::vec3(x,1,0);
+	else if (hue < 180)
+		return glm::vec3(0,1,x);
+	else if (hue < 240)
+		return glm::vec3(0,x,1);
+	else if (hue < 300)
+		return glm::vec3(x,0,1);
+	else
+		return glm::vec3(1,0,x);
+}
+
+struct VAO* create3DTexturedObject (GLenum primitive_mode, int numVertices, const GLfloat* vertex_buffer_data, const GLfloat* texture_buffer_data, GLuint textureID, GLenum fill_mode=GL_FILL)
+{
+	struct VAO* vao = new struct VAO;
+	vao->PrimitiveMode = primitive_mode;
+	vao->NumVertices = numVertices;
+	vao->FillMode = fill_mode;
+	vao->TextureID = textureID;
+
+	// Create Vertex Array Object
+	// Should be done after CreateWindow and before any other GL calls
+	glGenVertexArrays(1, &(vao->VertexArrayID)); // VAO
+	glGenBuffers (1, &(vao->VertexBuffer)); // VBO - vertices
+	glGenBuffers (1, &(vao->TextureBuffer));  // VBO - textures
+
+	glBindVertexArray (vao->VertexArrayID); // Bind the VAO
+	glBindBuffer (GL_ARRAY_BUFFER, vao->VertexBuffer); // Bind the VBO vertices
+	glBufferData (GL_ARRAY_BUFFER, 3*numVertices*sizeof(GLfloat), vertex_buffer_data, GL_STATIC_DRAW); // Copy the vertices into VBO
+	glVertexAttribPointer(
+						  0,                  // attribute 0. Vertices
+						  3,                  // size (x,y,z)
+						  GL_FLOAT,           // type
+						  GL_FALSE,           // normalized?
+						  0,                  // stride
+						  (void*)0            // array buffer offset
+						  );
+
+	glBindBuffer (GL_ARRAY_BUFFER, vao->TextureBuffer); // Bind the VBO textures
+	glBufferData (GL_ARRAY_BUFFER, 2*numVertices*sizeof(GLfloat), texture_buffer_data, GL_STATIC_DRAW);  // Copy the vertex colors
+	glVertexAttribPointer(
+						  2,                  // attribute 2. Textures
+						  2,                  // size (s,t)
+						  GL_FLOAT,           // type
+						  GL_FALSE,           // normalized?
+						  0,                  // stride
+						  (void*)0            // array buffer offset
+						  );
+
+	return vao;
+}
+
+void draw3DTexturedObject (struct VAO* vao)
+{
+	// Change the Fill Mode for this object
+	glPolygonMode (GL_FRONT_AND_BACK, vao->FillMode);
+
+	// Bind the VAO to use
+	glBindVertexArray (vao->VertexArrayID);
+
+	// Enable Vertex Attribute 0 - 3d Vertices
+	glEnableVertexAttribArray(0);
+	// Bind the VBO to use
+	glBindBuffer(GL_ARRAY_BUFFER, vao->VertexBuffer);
+
+	// Bind Textures using texture units
+	glBindTexture(GL_TEXTURE_2D, vao->TextureID);
+
+	// Enable Vertex Attribute 2 - Texture
+	glEnableVertexAttribArray(2);
+	// Bind the VBO to use
+	glBindBuffer(GL_ARRAY_BUFFER, vao->TextureBuffer);
+
+	// Draw the geometry !
+	glDrawArrays(vao->PrimitiveMode, 0, vao->NumVertices); // Starting from vertex 0; 3 vertices total -> 1 triangle
+
+	// Unbind Textures to be safe
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+/* Create an OpenGL Texture from an image */
+GLuint createTexture (const char* filename)
+{
+	GLuint TextureID;
+	// Generate Texture Buffer
+	glGenTextures(1, &TextureID);
+	// All upcoming GL_TEXTURE_2D operations now have effect on our texture buffer
+	glBindTexture(GL_TEXTURE_2D, TextureID);
+	// Set our texture parameters
+	// Set texture wrapping to GL_REPEAT
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	// Set texture filtering (interpolation)
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+	// Load image and create OpenGL texture
+	int twidth, theight;
+	unsigned char* image = SOIL_load_image(filename, &twidth, &theight, 0, SOIL_LOAD_RGB);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, twidth, theight, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
+	glGenerateMipmap(GL_TEXTURE_2D); // Generate MipMaps to use
+	SOIL_free_image_data(image); // Free the data read from file after creating opengl texture
+	glBindTexture(GL_TEXTURE_2D, 0); // Unbind texture when done, so we won't accidentily mess it up
+
+	return TextureID;
 }
 
 
@@ -747,6 +891,10 @@ void Cannon::barrelUp(){
   barrel->setAngle(currentAngle);
 }
 
+float Cannon::getBombInitSpeed(){
+	return bombInitSpeed;
+}
+
 void Cannon::setBarrelAngle(float angle){
 	float currentAngle = angle;
 	if(currentAngle >=0 )currentAngle = 0;
@@ -1092,6 +1240,64 @@ void Target::applyOtherForces(){
   if(isInContact()){
     	this->forceY += this->mass * GRAVITY;
 	}
+}
+
+FTGLFont::FTGLFont(GLMatrices *mtx, float* color, char* fontfile, char* word,float size, float x, float y, float scaleFactor)
+{
+	cout<<"Entered ftgl"<<endl;
+	this->mtx = mtx;
+	cout<<"mtx made"<<endl;
+	fontColor = glm::vec3(color[0], color[1], color[2]);
+	cout<<"vec color made"<<endl;
+	this->fontfile = new char[20];
+	strcpy(this->fontfile, fontfile);
+	this->word = new char[100];
+	strcpy(this->word, word);
+	cout<<"str copied"<<endl;
+	this->x = x;
+	this->y = y;
+	this->scaleFactor = scaleFactor;
+	
+	cout<<" Above this->font"<<endl;
+	this->font = new FTExtrudeFont(fontfile); // 3D extrude style rendering
+	if(this->font->Error())
+	{
+		cout << "Error: Could not load font `" << fontfile << "'" << endl;
+		glfwTerminate();
+		exit(EXIT_FAILURE);
+	}
+
+	// Create and compile our GLSL program from the font shaders
+	
+	this->fontMatrixID = glGetUniformLocation(fontProgramID, "MVP");
+	this->fontColorID = glGetUniformLocation(fontProgramID, "fontColor");
+
+	this->font->ShaderLocations(fontVertexCoordAttrib, fontVertexNormalAttrib, fontVertexOffsetUniform);
+	this->font->FaceSize(size);
+	this->font->Depth(0);
+	this->font->Outset(0, 0);
+	this->font->CharMap(ft_encoding_unicode);
+}
+
+void FTGLFont::draw(){
+  glm::mat4 MVP;
+  Matrices.view = glm::lookAt(glm::vec3(0,0,3), glm::vec3(0,0,0), glm::vec3(0,1,0)); // Fixed camera for 2D (ortho) in XY plane
+	// Transform the text
+	Matrices.model = glm::mat4(1.0f);
+	glm::mat4 translateText = glm::translate(glm::vec3(x,y,0));
+	glm::mat4 scaleText = glm::scale(glm::vec3(scaleFactor,scaleFactor,scaleFactor));
+	Matrices.model *= (translateText * scaleText);
+	MVP = Matrices.projection * Matrices.view * Matrices.model;
+	// send font's MVP and font color to fond shaders
+	glUniformMatrix4fv(this->fontMatrixID, 1, GL_FALSE, &MVP[0][0]);
+	glUniform3fv(this->fontColorID, 1, &fontColor[0]); 
+
+	// Render font
+	this->font->Render(word);
+}
+
+void FTGLFont::setWord(char* word){
+	strcpy(this->word, word);
 }
 
 float camera_position = 0.0f;
@@ -1470,6 +1676,9 @@ void draw()
   //  Don't change unless you are sure!!
   Matrices.view = glm::lookAt(glm::vec3(camera_position,0,3), glm::vec3(camera_position,0,0), glm::vec3(0,1,0)); // Fixed camera for 2D (ortho) in XY plane
 
+  //static float c = 0;
+	//c++;
+	//Matrices.view = glm::lookAt(glm::vec3(0,0,3), glm::vec3(0,0,0), glm::vec3(sinf(c*M_PI/180.0),3*cosf(c*M_PI/180.0),0)); // Fixed camera for 2D (ortho) in XY plane
   // Compute ViewProject matrix as view/camera might not be changed for this frame (basic scenario)
   //  Don't change unless you are sure!!
   glm::mat4 VP = Matrices.projection * Matrices.view;
@@ -1493,6 +1702,29 @@ void draw()
   b3->draw();
   t3->draw();
 
+  // Render font on screen
+  //static int fontScale = 0;
+  /*float fontScaleValue = 5.0f;
+  glm::vec3 fontColor = glm::vec3(0,0,0);*/
+
+  glUseProgram(fontProgramID);
+  f1->draw();
+  f2->draw();
+  /*
+  //Matrices.view = glm::lookAt(glm::vec3(0,0,3), glm::vec3(0,0,0), glm::vec3(0,1,0)); // Fixed camera for 2D (ortho) in XY plane
+// Transform the text
+	Matrices.model = glm::mat4(1.0f);
+	glm::mat4 translateText = glm::translate(glm::vec3(-3,2,0));
+	glm::mat4 scaleText = glm::scale(glm::vec3(fontScaleValue,fontScaleValue,fontScaleValue));
+	Matrices.model *= (translateText);
+	MVP = Matrices.projection * Matrices.view * Matrices.model;
+	// send font's MVP and font color to fond shaders
+	glUniformMatrix4fv(GL3Font.fontMatrixID, 1, GL_FALSE, &MVP[0][0]);
+	glUniform3fv(GL3Font.fontColorID, 1, &fontColor[0]); 
+
+	// Render font
+	GL3Font.font->Render("Color Bomber");*/
+	
 }
 
 /* Initialise glfw window, I/O callbacks and the renderer to use */
@@ -1586,6 +1818,34 @@ void initGL (GLFWwindow* window, int width, int height)
 
 	glEnable (GL_DEPTH_TEST);
 	glDepthFunc (GL_LEQUAL);
+	//glEnable(GL_BLEND);
+	//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+
+	// Initialise FTGL stuff
+	fontProgramID = LoadShaders( "fontrender.vert", "fontrender.frag" );
+
+	fontVertexCoordAttrib = glGetAttribLocation(fontProgramID, "vertexPosition");
+	fontVertexNormalAttrib = glGetAttribLocation(fontProgramID, "vertexNormal");
+	fontVertexOffsetUniform = glGetUniformLocation(fontProgramID, "pen");
+
+//FTGLFont(GLMatrices *mtx, float* color, char* fontfile, float size, float x, float y, float scaleFactor)
+	float colArrayFont[3];
+	colArrayFont[0] = 0;
+	colArrayFont[1] = 0;
+	colArrayFont[2] = 0;
+
+	char fileString[20]; 
+	strcpy(fileString, "kimberly.ttf");
+
+	char wordName[50];
+	strcpy(wordName, "The Ball Machine");
+
+	char wordName2[50];
+	strcpy(wordName2, "Speed:");
+
+	f1 = new FTGLFont(&Matrices, colArrayFont, fileString, wordName, 20.0f, -30.0f, TOP_BOUND - 5.0f, 1.0f);
+	f2 = new FTGLFont(&Matrices, colArrayFont, fileString, wordName2, 10.0f, LEFT_BOUND + 10.0f, TOP_BOUND - 10.0f, 1.0f);
 
     cout << "VENDOR: " << glGetString(GL_VENDOR) << endl;
     cout << "RENDERER: " << glGetString(GL_RENDERER) << endl;
@@ -1615,6 +1875,10 @@ int main (int argc, char** argv)
 
         // Poll for Keyboard and mouse events
         glfwPollEvents();
+        int speedB;
+		char str[50];
+		char strB[50];
+		strcpy(strB,"Speed:");
 
         // Control based on time (Time based transformation like 5 degrees rotation every 0.5s)
         current_time = glfwGetTime(); // Time in seconds
@@ -1632,6 +1896,10 @@ int main (int argc, char** argv)
  			handleCollisionsBlock();
  			handleCollisionsWall();
  			checkPan(window);
+ 			speedB = (int)can->getBombInitSpeed();
+ 			sprintf(str, "%d", speedB);
+ 			strcat(strB,str);
+ 			f2->setWord(strB);
         }
     }
 
