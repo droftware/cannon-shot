@@ -17,7 +17,9 @@ float LEFT_BOUND = -72.0f;
 float RIGHT_BOUND = 72.0f;
 float TOP_BOUND = 34.0f;
 float BOTTOM_BOUND = -34.0f;
-float ZOOM_FACTOR = 0.5f;
+float ZOOM_FACTOR = 2.0f;
+float WINDOW_WIDTH = 1300;
+float WINDOW_HEIGHT = 600;
 
 
 struct VAO {
@@ -172,11 +174,13 @@ public:
 
   void barrelUp();
   void barrelDown();
+  void setBarrelAngle(float angle);
   void shoot();
   void draw();
   void increaseSpeed();
   void decreaseSpeed();
   void applyForces(float timeInstance);
+  void setBombInitSpeed(float speed);
 private:
   Circle *tank;
   Rectangle *barrel;
@@ -633,6 +637,7 @@ float Rectangle::getAngle(){
   return angle;
 }
 
+//Sets positive angle in degrees
 float Rectangle::getPosAngle(){
   return angle + 90.0f;
 }
@@ -657,6 +662,7 @@ void Rectangle::setHeight(float h){
   this->height = h;
 }
 
+//angle in degrees
 void Rectangle::setAngle(float angle){
   this->angle = angle;
 }
@@ -723,6 +729,9 @@ Cannon::~Cannon(){
   delete barrel;
 }
 
+void Cannon::setBombInitSpeed(float speed){
+	this->bombInitSpeed = speed;
+}
 void Cannon::draw(){
   if(ammo){
     ammo->draw();
@@ -736,6 +745,13 @@ void Cannon::barrelUp(){
   currentAngle += 2;
   if(currentAngle >=0 )currentAngle = 0;
   barrel->setAngle(currentAngle);
+}
+
+void Cannon::setBarrelAngle(float angle){
+	float currentAngle = angle;
+	if(currentAngle >=0 )currentAngle = 0;
+	else if(currentAngle <= -90 )currentAngle = -90;
+	barrel->setAngle(angle);
 }
 
 void Cannon::increaseSpeed(){
@@ -975,11 +991,11 @@ Block::Block(GLMatrices *mtx, int x, int y, int width, int height, bool dynamic)
   this->dynamic = dynamic;
   this->time = 0.0f;
   if(dynamic){
-  	cout<<" Is dynamic "<<endl;
+  	//cout<<" Is dynamic "<<endl;
   	this->leftBound = x - 10.0f;
   	this->rightBound = x + 10.0f;
   	this->speed = 5.0f;
-  	cout<<"left bound -> "<<leftBound<<" Right Bound -> "<<rightBound<<endl;
+  	//cout<<"left bound -> "<<leftBound<<" Right Bound -> "<<rightBound<<endl;
   }
   else{
   	this->leftBound = x;
@@ -1015,7 +1031,7 @@ void Block::applyForces(float timeInstance){
 		if(tx < leftBound || tx > rightBound){
 			speed *= -1.0f;
 		}
-		cout<<"Force applied, tx = "<<tx<<endl;
+		//cout<<"Force applied, tx = "<<tx<<endl;
 	}
 }
 
@@ -1094,18 +1110,18 @@ void panCameraRight(){
 }
 
 void zoomIn(){
-  LEFT_BOUND -= ZOOM_FACTOR;
-  RIGHT_BOUND -= ZOOM_FACTOR;
+  LEFT_BOUND += ZOOM_FACTOR * 2.0f;
+  RIGHT_BOUND -= ZOOM_FACTOR * 2.0f;
   TOP_BOUND -= ZOOM_FACTOR;
-  BOTTOM_BOUND -= ZOOM_FACTOR;
+  BOTTOM_BOUND += ZOOM_FACTOR;
   Matrices.projection = glm::ortho(LEFT_BOUND, RIGHT_BOUND, BOTTOM_BOUND, TOP_BOUND, 0.1f, 500.0f);
 }
 
 void zoomOut(){
-  LEFT_BOUND += ZOOM_FACTOR;
-  RIGHT_BOUND += ZOOM_FACTOR;
+  LEFT_BOUND -= ZOOM_FACTOR * 2.0f;
+  RIGHT_BOUND += ZOOM_FACTOR * 2.0f;
   TOP_BOUND += ZOOM_FACTOR;
-  BOTTOM_BOUND += ZOOM_FACTOR;
+  BOTTOM_BOUND -= ZOOM_FACTOR;
   Matrices.projection = glm::ortho(LEFT_BOUND, RIGHT_BOUND, BOTTOM_BOUND, TOP_BOUND, 0.1f, 500.0f);
 }
 
@@ -1118,7 +1134,7 @@ bool checkCollisionItem(Item &first, Item &second, bool &flag){
   r12 = r12 * r12;
   if(dist <= r12 && flag)
     {
-      cout<<"*******COLLISION HAPPENED***********"<<endl;
+      //cout<<"*******COLLISION HAPPENED***********"<<endl;
       flag = false;
       return true;
     }
@@ -1167,11 +1183,11 @@ void simulateCollisionItem(Item &first, Item &second){
   second.ux += secondChange * unitX;
   second.uy += secondChange * unitY;
 
-  cout<<" Change First Ux = "<< firstChange * unitX<<endl;
-  cout<<" Change First Uy = "<< firstChange * unitY<<endl;
+  //cout<<" Change First Ux = "<< firstChange * unitX<<endl;
+  //cout<<" Change First Uy = "<< firstChange * unitY<<endl;
 
-  cout<<" Change Second Ux = "<< secondChange * unitX<<endl;
-  cout<<" Change Second Uy = "<< secondChange * unitY<<endl;
+  //cout<<" Change Second Ux = "<< secondChange * unitX<<endl;
+  //cout<<" Change Second Uy = "<< secondChange * unitY<<endl;
 
 }
 
@@ -1204,6 +1220,7 @@ void simulateCollisionBlock(Item& ball, Block &obs){
   float obsLeftBound = obs.rect->getTopLeftX() - obs.rect->getWidth()/2.0f - ball.radius;
   float obsRightBound = obs.rect->getTopLeftX() + obs.rect->getWidth()/2.0f + ball.radius;
   float obsTopBound = obs.rect->getTopLeftY() + obs.rect->getHeight()/2.0f + ball.radius;
+  float obsBottomBound = obs.rect->getTopLeftY() - obs.rect->getHeight()/2.0f - ball.radius;
   float obsTop = obs.rect->getTopLeftY() + obs.rect->getHeight()/2.0f;
   float obsBottom = obs.rect->getTopLeftY() - obs.rect->getHeight()/2.0f;
   if(ball.y < obsTop && ball.y > obsBottom){
@@ -1214,7 +1231,13 @@ void simulateCollisionBlock(Item& ball, Block &obs){
       ball.x = obsRightBound + 1.0f;
 
   }
-  else ball.uy = -1.0f * Item::OBS_BOUNCE_COF * ball.uy;
+  else {
+  	ball.uy = -1.0f * Item::OBS_BOUNCE_COF * ball.uy;
+  	if(ball.y > obs.rect->getTopLeftY())
+  		ball.y = obsTopBound + 1.0f;
+  	else
+  		ball.y = obsBottomBound - 1.0f;
+  }
 }
 
 void handleCollisionsBlock(){
@@ -1334,23 +1357,76 @@ void keyboardChar (GLFWwindow* window, unsigned int key)
 	}
 }
 
+bool mouseHold = false;
+bool panFlag = false;
+float prevX = 0.0f, prevY = 0.0f;
 /* Executed when a mouse button is pressed/released */
 void mouseButton (GLFWwindow* window, int button, int action, int mods)
 {
+	double xpos, ypos;
+	double result;
+	float window_width = WINDOW_WIDTH;
+	float window_height = WINDOW_HEIGHT;
     switch (button) {
         case GLFW_MOUSE_BUTTON_LEFT:
-            if (action == GLFW_RELEASE)
-                triangle_rot_dir *= -1;
+            if (action == GLFW_PRESS)
+                {
+					glfwGetCursorPos(window, &xpos, &ypos);
+					ypos = window_height - ypos;
+					cout<<"Cursoe - Xpos -> "<<xpos<<" Ypos-> "<<ypos<<endl;
+					result = atan(ypos/xpos) * 180 / M_PI;
+					result = -1.0f * (90.0f - result);
+					cout<<"Angle is "<<result<<endl;
+					can->setBarrelAngle((float)result);
+					if(xpos < window_width/4)can->setBombInitSpeed(80.0f);
+					else if(xpos >= window_width/4 && xpos < window_width/2)can->setBombInitSpeed(100.0f);
+					else if(xpos >= window_width/2 && xpos < window_width*3/4.0f)can->setBombInitSpeed(110.0f);
+					else can->setBombInitSpeed(130.0f);
+                }
+            //else if(action == GLFW_RELEASE)
             break;
         case GLFW_MOUSE_BUTTON_RIGHT:
-            if (action == GLFW_RELEASE) {
-                rectangle_rot_dir *= -1;
+            if (action == GLFW_PRESS) {
+            	/*
+            	glfwSetInputMode(window, GLFW_STICKY_MOUSE_BUTTONS, 1);
+            	glfwGetCursorPos(window, &xpos, &ypos);
+            	if((float)xpos > prevX)panCameraRight();
+            	else if((float)xpos < prevX)panCameraLeft();
+            	prevX = (float)xpos;
+            	*/
+            	panFlag = true;
+
             }
+            else if(action == GLFW_RELEASE){
+            	//glfwSetInputMode(window, GLFW_CURSOR_NORMAL, 1);
+            		prevX = 0.0f;
+            		panFlag = false;
+
+
+            	}
             break;
         default:
             break;
+        
     }
 }
+
+void checkPan(GLFWwindow* window){
+	double xpos, ypos;
+	if(panFlag){
+		glfwGetCursorPos(window, &xpos, &ypos);
+		if((float)xpos > prevX)panCameraRight();
+		else if((float)xpos < prevX)panCameraLeft();
+		prevX = (float)xpos;
+	}
+}
+
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
+{
+	if(yoffset > 0)zoomIn();
+	else if(yoffset < 0)zoomOut();
+}
+
 
 
 /* Executed when window is resized to 'width' and 'height' */
@@ -1464,6 +1540,8 @@ GLFWwindow* initGLFW (int width, int height)
     /* Register function to handle mouse click */
     glfwSetMouseButtonCallback(window, mouseButton);  // mouse button clicks
 
+    glfwSetScrollCallback(window, scroll_callback);
+
     return window;
 }
 
@@ -1517,8 +1595,8 @@ void initGL (GLFWwindow* window, int width, int height)
 
 int main (int argc, char** argv)
 {
-	int width = 1300;
-	int height = 600;
+	int width = WINDOW_WIDTH;
+	int height = WINDOW_HEIGHT;
 
     GLFWwindow* window = initGLFW(width, height);
 
@@ -1553,6 +1631,7 @@ int main (int argc, char** argv)
             handleCollisionsItem();
  			handleCollisionsBlock();
  			handleCollisionsWall();
+ 			checkPan(window);
         }
     }
 
