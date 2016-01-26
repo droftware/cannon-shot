@@ -1,0 +1,13 @@
+Cannon Shot by Akshat Tandon 201503001
+
+Game Objective:
+Shoot all the targets to win the game. You have only 10 bombs to shoot them.
+If you are able to successfully shoot all the targets in <=10 shots you win the game.
+If you have used all the bombs and some targets are still remaining you loose.
+
+Controls:
+Spacebar to shoot the projectile from cannon
+A/B to tilt the cannon
+F/S to alter projectile speed
+LEFT,/RIGHT to pan the scene
+UP/DOWN to zoom
